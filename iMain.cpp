@@ -1,10 +1,6 @@
 # include "iGraphics.h"
 
 int x = 300, y = 300, r = 20;
-/*
-	function iDraw() is called again and again by the system.
-
-	*/
 
 void iDraw() {
 	//place your drawing codes here

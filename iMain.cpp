@@ -5,11 +5,19 @@
 
 gameObject spaceship;
 object_properties player;
-
+const double dt = 0.005;
+const double acceleration = 10000;
+const double max_velocity = 1000;
+const double friction = 1000;
 
 
 void inititalize_gameObjects(gameObject *object, char filename[]);
 void Draw_gameObject(object_properties player);
+void thrust();
+void update();
+void start();
+
+
 
 void iDraw() {
 	iClear();
@@ -23,8 +31,7 @@ void iDraw() {
 	(mx, my) is the position where the mouse pointer is.
 	*/
 void iMouseMove(int mx, int my) {
-	printf("x = %d, y= %d\n",mx,my);
-	//place your codes here
+	player.angle = atan2(my-player.position.y,mx-player.position.x);
 }
 
 /*
@@ -51,6 +58,8 @@ void iKeyboard(unsigned char key) {
 	if (key == 'q') {
 		exit(0);
 	}
+
+	if(key == ' ')thrust();
 	//place your codes for other keys here
 }
 
@@ -86,10 +95,11 @@ int main() {
 		}
 	}
 	*/
-	player.position.x = 500;
-	player.position.y = 500;
-	player.object = spaceship;
+	start();
+	iSetTimer(dt,update);
 	iInitialize(1080, 720, "demo");
+	
+
 	return 0;
 }
 
@@ -133,16 +143,57 @@ void inititalize_gameObjects(gameObject *object, char filename[]){
 
 
 void Draw_gameObject(object_properties player){
+
+
 	for(int i = 0; i<player.object.number_of_polygons; i++){
 		iSetColor(player.object.color[i][0],player.object.color[i][1],player.object.color[i][2]);
 		double X[player.object.size[i]];
 		double Y[player.object.size[i]];
+		
 		for(int j = 0; j<player.object.size[i]; j++){
-			X[j] = player.object.x[i][j] + player.position.x;
-			Y[j] = player.object.y[i][j] + player.position.y;
-			
+
+			//converting cartesian coordinate to polar coordinate
+			double r = sqrt(player.object.x[i][j]*player.object.x[i][j] + player.object.y[i][j]*player.object.y[i][j]);
+			double theta = atan2(player.object.y[i][j],player.object.x[i][j]);
+
+			//modifying angle and converting back to cartesian
+			X[j] = player.position.x + r*cos(theta+player.angle);
+			Y[j] = player.position.y + r*sin(theta+player.angle);
 		}
 		iFilledPolygon(X,Y,player.object.size[i]);
-
+		for(int j = 0; j<player.object.size[i]; j++){
+			printf("%lf %lf\n",X[j],Y[j]);
+		}
 	}
+}
+
+
+void start(){
+	player.position.x = 500;
+	player.position.y = 500;
+	player.object = spaceship;
+}
+
+void update(){
+	//updating the position of the player
+	player.position.x += player.velocity.x*dt;
+	player.position.y += player.velocity.y*dt;
+
+	//adding friction
+	double velocity_magnitude = sqrt(player.velocity.x*player.velocity.x+player.velocity.y*player.velocity.y);
+	if(abs(player.velocity.x)>0){
+		player.velocity.x -= player.velocity.x/velocity_magnitude*friction*dt;
+	}
+	if(abs(player.velocity.y)>0){
+		player.velocity.y -= player.velocity.y/velocity_magnitude*friction*dt;
+	}
+}
+
+void thrust(){
+	double velocity_magnitude = sqrt(player.velocity.x*player.velocity.x+player.velocity.y*player.velocity.y);
+	if(velocity_magnitude<max_velocity){
+		player.velocity.x = player.velocity.x + acceleration*cos(player.angle)*dt;
+		player.velocity.y = player.velocity.y + acceleration*sin(player.angle)*dt;
+	}
+	//spawn_particle()
 }

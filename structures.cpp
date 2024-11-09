@@ -20,3 +20,10 @@ struct object_properties{
 	vector2 velocity;
 	double angle;
 };
+
+struct particle{
+	vector2 position;
+	vector2 velocity;
+	double life = 0;
+	
+};

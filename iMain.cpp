@@ -5,14 +5,19 @@
 
 gameObject spaceship;
 object_properties player;
+const int total_particle = 1000;
+particle flare[total_particle];
 const double dt = 0.005;
-const double acceleration = 10000;
+const double acceleration = 20000;
 const double max_velocity = 1000;
 const double friction = 1000;
+const double particle_life = 0.05;
+
 
 
 void inititalize_gameObjects(gameObject *object, char filename[]);
 void Draw_gameObject(object_properties player);
+void Draw_flare();
 void thrust();
 void update();
 void start();
@@ -21,6 +26,7 @@ void start();
 
 void iDraw() {
 	iClear();
+	Draw_flare();
 	Draw_gameObject(player);
 }
 
@@ -53,14 +59,13 @@ void iMouse(int button, int state, int mx, int my) {
 /*
 	function iKeyboard() is called whenever the user hits a key in keyboard.
 	key- holds the ASCII value of the key pressed.
-	*/
+*/
 void iKeyboard(unsigned char key) {
 	if (key == 'q') {
 		exit(0);
 	}
 
 	if(key == ' ')thrust();
-	//place your codes for other keys here
 }
 
 /*
@@ -83,20 +88,9 @@ void iSpecialKeyboard(unsigned char key) {
 
 int main() {
 	
-	//place your own initialization codes here.
 	inititalize_gameObjects(&spaceship,"assets/spaceship.txt");
-	/* //DEGUB initialization
-	printf("%d\n",spaceship.number_of_polygons);
-	for(int i = 0; i<spaceship.number_of_polygons; i++){
-		printf("number of nodes: %d\n",spaceship.size[i]);
-		printf("color code: %d %d %d\n",spaceship.color[i][0],spaceship.color[i][1],spaceship.color[i][2]);
-		for(int j = 0; j<spaceship.size[i];j++){
-			printf("%lf  %lf\n",spaceship.x[i][j],spaceship.y[i][j]);
-		}
-	}
-	*/
 	start();
-	iSetTimer(dt,update);
+	iSetTimer(dt*1000,update);
 	iInitialize(1080, 720, "demo");
 	
 
@@ -161,9 +155,7 @@ void Draw_gameObject(object_properties player){
 			Y[j] = player.position.y + r*sin(theta+player.angle);
 		}
 		iFilledPolygon(X,Y,player.object.size[i]);
-		for(int j = 0; j<player.object.size[i]; j++){
-			printf("%lf %lf\n",X[j],Y[j]);
-		}
+
 	}
 }
 
@@ -187,6 +179,18 @@ void update(){
 	if(abs(player.velocity.y)>0){
 		player.velocity.y -= player.velocity.y/velocity_magnitude*friction*dt;
 	}
+
+	//updating flare particles
+	for(int i = 0; i<total_particle; i++){
+		
+		if(flare[i].life>0.0000001){
+			flare[i].life -= dt;
+			flare[i].position.x += flare[i].velocity.x*dt;
+			flare[i].position.y += flare[i].velocity.y*dt;
+		}
+
+	}
+
 }
 
 void thrust(){
@@ -195,5 +199,29 @@ void thrust(){
 		player.velocity.x = player.velocity.x + acceleration*cos(player.angle)*dt;
 		player.velocity.y = player.velocity.y + acceleration*sin(player.angle)*dt;
 	}
-	//spawn_particle()
+	
+	double adjust = 25;
+	int cnt = 0;
+	int active = 0;
+	for(int i = 0; i<1000; i++){
+		if(flare[i].life<0.00000001){
+			cnt++;
+			flare[i].life = particle_life;
+			double velocity = rand()%1000;
+			flare[i].velocity.x = -velocity*cos(player.angle);
+			flare[i].velocity.y = -velocity*sin(player.angle);
+			flare[i].position.x = player.position.x-adjust*cos(player.angle);
+			flare[i].position.y = player.position.y-adjust*sin(player.angle);
+		}       
+		else active++;
+		if(cnt>20)break;
+	}
+	printf("Active: %d\n",active);
+}
+
+void Draw_flare(){
+	iSetColor(18, 206, 219);
+	for(int i = 0; i<total_particle; i++){
+		if(flare[i].life>0.00001) iFilledCircle(flare[i].position.x,flare[i].position.y,((rand()%1000)/100.0f)*(flare[i].life/particle_life));
+	}
 }

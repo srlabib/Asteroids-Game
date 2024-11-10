@@ -5,20 +5,30 @@
 
 gameObject spaceship;
 object_properties player;
-const int total_particle = 1000;
-particle flare[total_particle];
-const double dt = 0.005;
+//spaceship properties
+const double dt = 0.005;                   
 const double acceleration = 20000;
 const double max_velocity = 1000;
 const double friction = 1000;
+//particle
+const int total_particle = 200;
+particle flare[total_particle];
 const double particle_life = 0.05;
+double particle_initial_pos = 30;
+//bullets
+bool shoot = 0;
+const int max_bullet = 20;
+bullet bullets[max_bullet];
+double bullet_velocity = 6000;
 
 
-
+            
 void inititalize_gameObjects(gameObject *object, char filename[]);
 void Draw_gameObject(object_properties player);
 void Draw_flare();
+void Draw_bullet();
 void thrust();
+void fire();
 void update();
 void start();
 
@@ -27,7 +37,9 @@ void start();
 void iDraw() {
 	iClear();
 	Draw_flare();
+	Draw_bullet();
 	Draw_gameObject(player);
+
 }
 
 
@@ -38,6 +50,7 @@ void iDraw() {
 	*/
 void iMouseMove(int mx, int my) {
 	player.angle = atan2(my-player.position.y,mx-player.position.x);
+
 }
 
 /*
@@ -46,9 +59,7 @@ void iMouseMove(int mx, int my) {
 	*/
 void iMouse(int button, int state, int mx, int my) {
 	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
-		//place your codes here
-		//	printf("x = %d, y= %d\n",mx,my);
-
+		fire();
 	}
 	if (button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN) {
 		//place your codes here
@@ -135,7 +146,6 @@ void inititalize_gameObjects(gameObject *object, char filename[]){
 
 }
 
-
 void Draw_gameObject(object_properties player){
 
 
@@ -155,10 +165,24 @@ void Draw_gameObject(object_properties player){
 			Y[j] = player.position.y + r*sin(theta+player.angle);
 		}
 		iFilledPolygon(X,Y,player.object.size[i]);
-
 	}
 }
 
+void Draw_flare(){
+	iSetColor(18, 206, 219);
+	for(int i = 0; i<total_particle; i++){
+		if(flare[i].life>0.00001) iFilledCircle(player.position.x-flare[i].position*cos(player.angle),player.position.y-flare[i].position*sin(player.angle),((rand()%1000)/100.0f)*(flare[i].life/particle_life));
+	}
+}
+
+void Draw_bullet(){
+	iSetColor(247, 49, 5);
+	for(int i = 0; i<max_bullet; i++){
+		if(bullets[i].active){
+			iFilledCircle(bullets[i].position.x,bullets[i].position.y,5);
+		}
+	}
+}
 
 void start(){
 	player.position.x = 500;
@@ -181,15 +205,32 @@ void update(){
 	}
 
 	//updating flare particles
+	int active = 0;
 	for(int i = 0; i<total_particle; i++){
 		
 		if(flare[i].life>0.0000001){
 			flare[i].life -= dt;
-			flare[i].position.x += flare[i].velocity.x*dt;
-			flare[i].position.y += flare[i].velocity.y*dt;
+			flare[i].position += flare[i].velocity*dt;
+			active++;
 		}
-
 	}
+	printf("Active: %d\t",active);
+
+
+	//updating bullets
+	active = 0;
+	for(int i = 0; i<max_bullet; i++){
+		if(bullets[i].active){
+			bullets[i].position.x += bullets[i].velocity.x*dt;
+			bullets[i].position.y += bullets[i].velocity.y*dt;
+
+			if(abs(bullets[i].position.x)>1500 || abs(bullets[i].position.y)>800){
+				bullets[i].active = 0;
+			}
+			active++;
+		}
+	}
+	printf("Active: %d\n",active);
 
 }
 
@@ -202,26 +243,28 @@ void thrust(){
 	
 	double adjust = 25;
 	int cnt = 0;
-	int active = 0;
-	for(int i = 0; i<1000; i++){
+	for(int i = 0; i<total_particle; i++){
 		if(flare[i].life<0.00000001){
 			cnt++;
 			flare[i].life = particle_life;
-			double velocity = rand()%1000;
-			flare[i].velocity.x = -velocity*cos(player.angle);
-			flare[i].velocity.y = -velocity*sin(player.angle);
-			flare[i].position.x = player.position.x-adjust*cos(player.angle);
-			flare[i].position.y = player.position.y-adjust*sin(player.angle);
+			flare[i].velocity = rand()%1000;
+			flare[i].position = particle_initial_pos;
 		}       
-		else active++;
+
 		if(cnt>20)break;
 	}
-	printf("Active: %d\n",active);
 }
 
-void Draw_flare(){
-	iSetColor(18, 206, 219);
-	for(int i = 0; i<total_particle; i++){
-		if(flare[i].life>0.00001) iFilledCircle(flare[i].position.x,flare[i].position.y,((rand()%1000)/100.0f)*(flare[i].life/particle_life));
+void fire(){
+
+	for(int i = 0; i<max_bullet; i++){
+		if(!bullets[i].active){
+			bullets[i].position = player.position;
+			bullets[i].velocity.x = bullet_velocity*cos(player.angle);
+			bullets[i].velocity.y = bullet_velocity*sin(player.angle);
+			bullets[i].active = 1;
+			break;
+		}
+
 	}
 }

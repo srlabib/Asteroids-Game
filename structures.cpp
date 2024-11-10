@@ -1,4 +1,3 @@
-// #include<stdio.h>
 
 struct vector2
 {
@@ -8,10 +7,10 @@ struct vector2
 
 struct gameObject{
 	int number_of_polygons;
-	double **x;  // x coordinate of all polygons 
-	double **y;  // y coordinate of all polygons
-	int *size; // number of nodes of each polygons
-	int (*color)[3];
+	double **x;                  // x coordinate of all polygons  
+	double **y;                  // y coordinate of all polygons
+	int *size;                   // number of nodes of each polygons
+	int (*color)[3];             //RGB color code
 };
 
 struct object_properties{
@@ -22,8 +21,13 @@ struct object_properties{
 };
 
 struct particle{
+	double position;
+	double velocity;
+	double life = 0;
+};
+
+struct bullet{
 	vector2 position;
 	vector2 velocity;
-	double life = 0;
-	
+	bool active = 0;
 };

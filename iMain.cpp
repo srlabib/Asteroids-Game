@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include "structures.cpp"
 
-
 gameObject spaceship;
 object_properties player;
 //spaceship properties
@@ -10,11 +9,13 @@ const double dt = 0.005;
 const double acceleration = 20000;
 const double max_velocity = 1000;
 const double friction = 1000;
+double scale = 1;
 //particle
 const int total_particle = 200;
 particle flare[total_particle];
 const double particle_life = 0.05;
 double particle_initial_pos = 30;
+int flare_intensity = 20;
 //bullets
 bool shoot = 0;
 const int max_bullet = 20;
@@ -102,7 +103,7 @@ int main() {
 	inititalize_gameObjects(&spaceship,"assets/spaceship.txt");
 	start();
 	iSetTimer(dt*1000,update);
-	iInitialize(1080, 720, "demo");
+	iInitialize(1280, 720, "Astroid Game");
 	
 
 	return 0;
@@ -157,7 +158,7 @@ void Draw_gameObject(object_properties player){
 		for(int j = 0; j<player.object.size[i]; j++){
 
 			//converting cartesian coordinate to polar coordinate
-			double r = sqrt(player.object.x[i][j]*player.object.x[i][j] + player.object.y[i][j]*player.object.y[i][j]);
+			double r = sqrt(player.object.x[i][j]*player.object.x[i][j]*scale*scale + player.object.y[i][j]*player.object.y[i][j]*scale*scale);
 			double theta = atan2(player.object.y[i][j],player.object.x[i][j]);
 
 			//modifying angle and converting back to cartesian
@@ -171,7 +172,7 @@ void Draw_gameObject(object_properties player){
 void Draw_flare(){
 	iSetColor(18, 206, 219);
 	for(int i = 0; i<total_particle; i++){
-		if(flare[i].life>0.00001) iFilledCircle(player.position.x-flare[i].position*cos(player.angle),player.position.y-flare[i].position*sin(player.angle),((rand()%1000)/100.0f)*(flare[i].life/particle_life));
+		if(flare[i].life>0.00001) iFilledCircle(player.position.x-flare[i].position*cos(player.angle),player.position.y-flare[i].position*sin(player.angle),((rand()%1000)/100.0f)*(flare[i].life/particle_life)*scale);
 	}
 }
 
@@ -248,10 +249,10 @@ void thrust(){
 			cnt++;
 			flare[i].life = particle_life;
 			flare[i].velocity = rand()%1000;
-			flare[i].position = particle_initial_pos;
+			flare[i].position = particle_initial_pos*scale;
 		}       
 
-		if(cnt>20)break;
+		if(cnt>flare_intensity)break;
 	}
 }
 

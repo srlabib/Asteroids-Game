@@ -10,14 +10,17 @@ struct gameObject{
 	double **x;                  // x coordinate of all polygons  
 	double **y;                  // y coordinate of all polygons
 	int *size;                   // number of nodes of each polygons
-	int (*color)[3];             //RGB color code
+	int (*color)[3];             // RGB color code
 };
 
 struct object_properties{
 	gameObject object;
 	vector2 position;
 	vector2 velocity;
+	double angular_velocity;
+	double scale;
 	double angle;
+	double life = 0;
 };
 
 struct particle{
@@ -31,3 +34,4 @@ struct bullet{
 	vector2 velocity;
 	bool active = 0;
 };
+

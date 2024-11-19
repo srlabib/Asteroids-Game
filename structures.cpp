@@ -11,6 +11,7 @@ struct gameObject{
 	double **y;                  // y coordinate of all polygons
 	int *size;                   // number of nodes of each polygons
 	int (*color)[3];             // RGB color code
+	double collider_radius;
 };
 
 struct object_properties{
@@ -33,5 +34,10 @@ struct bullet{
 	vector2 position;
 	vector2 velocity;
 	bool active = 0;
+};
+
+
+enum side{
+	bottom,top,left,right
 };
 

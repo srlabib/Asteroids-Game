@@ -3,6 +3,8 @@
 	#include "structures.cpp"
 	#include<time.h>
 
+	#define DEBUG
+
 	bool ok = 1;
 
 	gameObject spaceship;
@@ -43,7 +45,7 @@
 	double cam_factorx,cam_factory;
 
 
-				
+			
 	void inititalize_gameObjects(gameObject *object, char filename[]);
 	void Draw_gameObject(object_properties player);
 	void generate_asteroid();
@@ -80,8 +82,13 @@
 		Draw_gameObject(player);
 		char text[50];
 		sprintf(text,"%lf %lf",player.position.x,player.position.y);
+
+
+		#ifdef DEBUG
 		iSetColor(255,255,255);
 		iText(player.position.x-camera_offset.x-50,player.position.y-camera_offset.y-50,text);
+		#endif // DEBUG
+
 		
 	}
 
@@ -126,6 +133,7 @@
 		if(key == 's')camera_offset.y-=2;
 		if(key == 'a')camera_offset.x-=2;
 		if(key == 'd')camera_offset.x+=2;
+		if(key == 'p')iPauseTimer(0);
 
 	}
 
@@ -199,6 +207,7 @@
 			}
 
 		}
+		fscanf(gameData,"%lf",&object->collider_radius);
 		fclose(gameData);
 
 	}
@@ -207,7 +216,7 @@
 
 
 		for(int i = 0; i<player.object.number_of_polygons; i++){
-			iSetColor(player.object.color[i][0],player.object.color[i][1],player.object.color[i][2]);
+
 			double X[player.object.size[i]];
 			double Y[player.object.size[i]];
 			
@@ -220,9 +229,25 @@
 				//modifying angle and converting back to cartesian
 				X[j] = player.position.x + r*cos(theta+player.angle)-camera_offset.x;
 				Y[j] = player.position.y + r*sin(theta+player.angle)-camera_offset.y;
+
 			}
+			iSetColor(player.object.color[i][0],player.object.color[i][1],player.object.color[i][2]);
 			iFilledPolygon(X,Y,player.object.size[i]);
+
+			#ifdef DEBUG
+			for(int j = 0; j<player.object.size[i]; j++){
+				iSetColor(255, 17, 0);
+				iPoint(X[j],Y[j],2);	
+			}
+			#endif // DEBUG
+
 		}
+		#ifdef DEBUG
+		iSetColor(255,255,255);
+		iCircle(player.position.x-camera_offset.x,player.position.y-camera_offset.y,player.object.collider_radius*player.scale);
+		
+		#endif // DEBUG
+		
 	}
 
 	void Draw_flare(){
@@ -380,32 +405,33 @@
 	}
 
 	void generate_asteroid(){
-		int x = rand()%4;
+		enum side x = static_cast<side>(rand()%4);
 		double pos;
 		double angle;
 		switch (x)
 		{
-		case 0:
+		case bottom:
 			pos = -world_limit_x/2+rand()%(int)world_limit_x;
 			asteroids_properties[active_ateroids].position.x = pos;
 			asteroids_properties[active_ateroids].position.y = -world_limit_y/2;
 			angle = 60+rand()%60;
-			
 			break;
 		
-		case 1:
+		case top:
 			pos = -world_limit_x/2+rand()%(int)world_limit_x;
 			asteroids_properties[active_ateroids].position.x = pos;
 			asteroids_properties[active_ateroids].position.y = world_limit_y/2;
 			angle = -60-rand()%60;
 			break;
-		case 2:
+
+		case left:
 			pos = -world_limit_y/2+rand()%(int)world_limit_y;
 			asteroids_properties[active_ateroids].position.x = -world_limit_x/2;
 			asteroids_properties[active_ateroids].position.y = pos;
 			angle = -30+rand()%60;
 			break;
-		case 3:
+
+		case right:
 			pos = -world_limit_y/2+rand()%(int)world_limit_y;
 			asteroids_properties[active_ateroids].position.x = world_limit_x/2;
 			asteroids_properties[active_ateroids].position.y = pos;

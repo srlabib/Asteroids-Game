@@ -1,7 +1,7 @@
 	# include "iGraphics.h"
 	#include <stdlib.h>
 	#include "structures.cpp"
-	#include<time.h>
+	#include <time.h>
 
 	#define DEBUG
 
@@ -30,7 +30,7 @@
 	//asteroidss
 	gameObject asteroids[3];
 	object_properties asteroids_properties[1000];
-	int asteroid_top = 0;
+	// int asteroid_top = 0;
 	int active_ateroids = 0;
 	int asteroid_limit = 30;
 	
@@ -45,7 +45,6 @@
 	double cam_factorx,cam_factory;
 
 
-			
 	void inititalize_gameObjects(gameObject *object, char filename[]);
 	void Draw_gameObject(object_properties player);
 	void generate_asteroid();
@@ -53,14 +52,15 @@
 	void Draw_bullet();
 	void thrust();
 	void fire();
-	void update();
+	void update();;
 	void start();
+	bool isColliding(object_properties object1, object_properties object2);
+	void Destroy_asteroid(int index);
 
 
 	void iDraw() {
 		
 		iClear();
-
 
 		//the sky
 		iSetColor(3, 11, 41);
@@ -332,7 +332,7 @@
 				active++;
 			}
 		}
-		printf("Active: %d\t",active);
+		//	printf("Active: %d\t",active);
 
 
 		//updating bullets
@@ -365,7 +365,29 @@
 			asteroids_properties[i].position.y+=asteroids_properties[i].velocity.y*dt;
 			
 		}
-		printf("%d\n",active_ateroids);
+		//printf("%d\n",active_ateroids);
+
+
+		// asteroid spaceship collision
+		for(int i = 0; i<active_ateroids; i++){
+			if(isColliding(player,asteroids_properties[i])){
+				printf("Collision detected!\n");
+			}
+		}
+
+		// asteroids bullet collision
+		for(int i = 0; i<20; i++){
+			if(!bullets[i].active)continue;
+			for(int j = 0; j<active_ateroids; j++){
+				double dx = (asteroids_properties[j].position.x-bullets[i].position.x);
+				double dy = (asteroids_properties[j].position.y-bullets[i].position.y);
+				double r2 = asteroids_properties[j].object.collider_radius;
+
+				if(dx*dx + dy*dy < r2*r2){
+					Destroy_asteroid(j);
+				}
+			}
+		}
 
 	}
 
@@ -389,6 +411,8 @@
 			if(cnt>flare_intensity)break;
 		}
 	}
+
+
 
 	void fire(){
 
@@ -448,4 +472,19 @@
 		asteroids_properties[active_ateroids].scale = 0.7;
 		asteroids_properties[active_ateroids].object = asteroids[rand()%3];
 		active_ateroids++;
+	}
+
+	bool isColliding(object_properties object1, object_properties object2){
+		double dx = (object1.position.x-object2.position.x);
+		double dy = (object1.position.y-object2.position.y);
+		double r2 = object1.object.collider_radius+object2.object.collider_radius;
+
+
+		if(dx*dx + dy*dy < r2*r2) return 1;
+		return 0;
+	}
+
+	void Destroy_asteroid(int index){
+		asteroids_properties[index] = asteroids_properties[active_ateroids-1];
+		active_ateroids--;
 	}

@@ -1,17 +1,27 @@
-# include "iGraphics.h"
+#include "iGraphics.h"
 #include <stdlib.h>
 #include "structures.cpp"
 #include <time.h>
 
-#define DEBUG
+//#define DEBUG
 
+int wave = 1;
+
+//spaceship properties
 gameObject spaceship;
 object_properties player;
-//spaceship properties
 const double dt = 0.005;                   
 const double acceleration = 20000;
 const double max_velocity = 1000;
 const double friction = 1000;
+
+
+//ENEMY
+gameObject enemy[3];
+object_properties enemy_porperties[10];
+vector2 enemy_destination[10];
+double enemy_direction[10];
+int enemy_count = 1;
 
 //particle
 const int total_particle = 200;
@@ -19,11 +29,12 @@ particle flare[total_particle];
 const double particle_life = 0.05;
 double particle_initial_pos = 30;
 int flare_intensity = 20;
+
 //bullets
 bool shoot = 0;
 const int max_bullet = 20;
 bullet bullets[max_bullet];
-double bullet_velocity = 6000;
+double bullet_velocity = 4000;
 
 //asteroidss
 gameObject asteroids[3];
@@ -31,10 +42,10 @@ object_properties asteroids_properties[1000];
 double asteroid_scale1 = 0.7;
 double asteroid_scale2 =0.5;
 double asteroid_scale3 = 0.3;
+
 // int asteroid_top = 0;
 int active_ateroids = 0;
-int asteroid_limit = 10;
-
+int asteroid_limit = 15;
 
 //environment
 const int num_of_stars = 400;
@@ -59,7 +70,10 @@ void update();
 void start();
 bool isColliding(object_properties object1, object_properties object2);
 void Destroy_asteroid(int index);
-
+void ControlEnemy();
+void SendEnemy(int level);
+void destroy_enemy(int index);
+double distance(vector2 a, vector2 b);
 
 void iDraw() {
 	
@@ -72,26 +86,30 @@ void iDraw() {
 	// stars
 	for(int i = 0; i<num_of_stars/2; i++){
 		iPoint(stars_pos1[i].x-camera_offset.x*0.7,stars_pos1[i].y-camera_offset.y*0.7,(rand()%100)*.03);
-		iPoint(stars_pos2[i].x-camera_offset.x*0.6,stars_pos2[i].y-camera_offset.y*0.6,(rand()%100)*.015);
+		iPoint(stars_pos2[i].x-camera_offset.x*0.5,stars_pos2[i].y-camera_offset.y*0.5,(rand()%100)*.015);
 	}
 	
 	
-	//Draw_gameObject(asteroids_properties);
 	for(int i = 0; i<active_ateroids; i++){
 		Draw_gameObject(asteroids_properties[i]);
 	}
 	Draw_flare();
 	Draw_bullet();
 	Draw_gameObject(player);
-	char text[50];
-	sprintf(text,"%lf %lf",player.position.x,player.position.y);
+	for(int i = 0; i<enemy_count; i++){
+		Draw_gameObject(enemy_porperties[i]);
+	}
 
 
 	#ifdef DEBUG
+	char text[50];
+	sprintf(text,"%lf %lf %lf",player.position.x,player.position.y,player.angle);
 	iSetColor(255,255,255);
 	iText(player.position.x-camera_offset.x-50,player.position.y-camera_offset.y-50,text);
+	for(int i = 0; i<enemy_count; i++){
+		iLine(enemy_porperties[i].position.x-camera_offset.x,enemy_porperties[i].position.y-camera_offset.y,enemy_destination[i].x-camera_offset.x,enemy_destination[i].y-camera_offset.y);
+	}
 	#endif // DEBUG
-
 	
 }
 
@@ -159,6 +177,17 @@ int main() {
 	inititalize_gameObjects(&asteroids[0],"assets/asteroid1.txt");
 	inititalize_gameObjects(&asteroids[1],"assets/asteroid2.txt");
 	inititalize_gameObjects(&asteroids[2],"assets/asteroid3.txt");
+
+
+//Testing enemy sprite
+	inititalize_gameObjects(&enemy[0],"assets/enemy1.txt");
+	inititalize_gameObjects(&enemy[1],"assets/enemy1.txt");
+	inititalize_gameObjects(&enemy[2],"assets/enemy1.txt");
+	inititalize_gameObjects(&enemy[3],"assets/enemy1.txt");
+	
+
+//testing enemy sprite
+
 	start();
 	iSetTimer(dt*1000,update);
 	iInitialize(1280, 720, "asteroids Game");
@@ -279,6 +308,8 @@ void start(){
 		stars_pos2[i].y = -world_limit_y/2+rand()%(int)world_limit_y;
 	}
 
+	SendEnemy(1);
+
 
 }
 
@@ -368,8 +399,18 @@ void update(){
 	// asteroid spaceship collision
 	for(int i = 0; i<active_ateroids; i++){
 		if(isColliding(player,asteroids_properties[i])){
-			iPauseTimer(0);
+			//iPauseTimer(0);
+			
 			printf("Collision detected!\n");
+		}
+	}
+
+	// player enemy collision
+	for(int i = 0; i<enemy_count; i++){
+		if(isColliding(player,enemy_porperties[i])){
+			//destroy both
+			destroy_enemy(i);
+			printf("Collision with enemy detected!\n");
 		}
 	}
 
@@ -377,11 +418,8 @@ void update(){
 	for(int i = 0; i<20; i++){
 		if(!bullets[i].active)continue;
 		for(int j = 0; j<active_ateroids; j++){
-			double dx = (asteroids_properties[j].position.x-bullets[i].position.x);
-			double dy = (asteroids_properties[j].position.y-bullets[i].position.y);
-			double r2 = asteroids_properties[j].object.collider_radius*asteroids_properties[j].scale;
-
-			if(dx*dx + dy*dy < r2*r2){
+			if(distance(asteroids_properties[j].position,bullets[i].position)<asteroids_properties[j].object.collider_radius*asteroids_properties[j].scale)
+			{
 				if(asteroids_properties[j].scale == asteroid_scale1){
 					create_asteroids(asteroids_properties[j].position,asteroid_scale2);
 					create_asteroids(asteroids_properties[j].position,asteroid_scale2);
@@ -396,6 +434,18 @@ void update(){
 				
 			}
 		}
+		for(int j = 0; j<enemy_count; j++){
+			if(distance(enemy_porperties[j].position,bullets[i].position)<enemy_porperties[j].object.collider_radius*enemy_porperties[j].scale)
+			{
+				destroy_enemy(j);
+			}
+		}
+	}
+
+	ControlEnemy();
+
+	if(enemy_count == 0){
+		SendEnemy(++wave);
 	}
 
 }
@@ -436,6 +486,7 @@ void fire(){
 	}
 }
 
+//Generates asteroids automatically on the edge of the game world when asteroid count is less than max count
 void generate_asteroid(){
 	enum side x = static_cast<side>(rand()%4);
 	double pos;
@@ -482,6 +533,7 @@ void generate_asteroid(){
 	active_ateroids++;
 }
 
+// This function creates asteroids on a specific location (where a bigger asteroid is broken)
 void create_asteroids(vector2 position, double scale){
 	asteroids_properties[active_ateroids].position = position;
 	double angle = rand()%360;
@@ -508,4 +560,77 @@ bool isColliding(object_properties object1, object_properties object2){
 void Destroy_asteroid(int index){
 	asteroids_properties[index] = asteroids_properties[active_ateroids-1];
 	active_ateroids--;
+}
+
+
+void ControlEnemy(){
+	for(int i = 0; i<enemy_count; i++){
+		if(distance(enemy_destination[i],enemy_porperties[i].position)<100){
+			enemy_destination[i].x = camera_offset.x+rand()%1280;
+			enemy_destination[i].y = camera_offset.y+rand()%720;
+		}
+		enemy_direction[i] = atan2(-enemy_porperties[i].position.y+enemy_destination[i].y,-enemy_porperties[i].position.x+enemy_destination[i].x);
+		if(enemy_direction[i]<0)enemy_direction[i]+=acos(-1)*2;
+		if(abs(enemy_direction[i]-enemy_porperties[i].angle)<0.05)enemy_porperties[i].angle = enemy_direction[i];
+		if(enemy_porperties[i].angle<enemy_direction[i]){
+			if(enemy_direction[i]-enemy_porperties[i].angle<acos(-1)*2-(enemy_direction[i]-enemy_porperties[i].angle)){
+				enemy_porperties[i].angle+=0.05;
+			}else{
+				enemy_porperties[i].angle-=0.05;
+			}
+		}else{
+			if(enemy_porperties[i].angle-enemy_direction[i]<acos(-1)*2-(enemy_porperties[i].angle-enemy_direction[i])){
+				enemy_porperties[i].angle-=0.05;
+			}else{
+				enemy_porperties[i].angle+=0.05;
+			}
+		}
+		if(enemy_porperties[i].angle<0)enemy_porperties[i].angle = acos(-1)*2;
+		else if(enemy_porperties[i].angle>acos(-1)*2)enemy_porperties[i].angle =0;
+		
+		enemy_porperties[i].velocity.x = max_velocity*cos(enemy_porperties[i].angle);
+		enemy_porperties[i].velocity.y = max_velocity*sin(enemy_porperties[i].angle);
+		enemy_porperties[i].position.x += enemy_porperties[i].velocity.x*dt;
+		enemy_porperties[i].position.y += enemy_porperties[i].velocity.y*dt;
+	}
+	
+}
+void SendEnemy(int wave){
+	enemy_count = wave;
+	for(int i = 0; i<enemy_count; i++){
+		enemy_porperties[i].object = enemy[rand()%3];
+		enemy_porperties[i].life = 100;
+		enemy_porperties[i].scale = 0.4;
+		enum side x = static_cast<side>(rand()%4);
+		switch (x)
+		{
+		case bottom:
+			enemy_porperties[i].position.x = 0;
+			enemy_porperties[i].position.y = -world_limit_y/2;
+			break;
+		case top:
+			enemy_porperties[i].position.x = 0;
+			enemy_porperties[i].position.y = world_limit_y/2;
+			break;
+		case left:
+			enemy_porperties[i].position.x = -world_limit_x/2;
+			enemy_porperties[i].position.y = 0;
+			break;
+		case right:
+			enemy_porperties[i].position.x = world_limit_x/2;
+			enemy_porperties[i].position.y = 0;
+			break;
+		
+		default:
+			break;
+		}
+		enemy_destination[i] = enemy_porperties[i].position;
+	}
+}
+void destroy_enemy(int index){
+	enemy_porperties[index] = enemy_porperties[enemy_count-1];
+	enemy_count--;
+}
+double distance(vector2 a, vector2 b){
+	return sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y));
 }

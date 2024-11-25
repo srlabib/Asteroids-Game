@@ -11,17 +11,21 @@ int wave = 1;
 gameObject spaceship;
 object_properties player;
 const double dt = 0.005;                   
-const double acceleration = 20000;
-const double max_velocity = 1000;
-const double friction = 1000;
+const double acceleration = 20000;	
+const double max_velocity = 1500;
+const double friction = 1500;
 
 
 //ENEMY
-gameObject enemy[3];
-object_properties enemy_porperties[10];
-vector2 enemy_destination[10];
-double enemy_direction[10];
+const int max_enemy = 10;
+const double reload_time = 1000;
 int enemy_count = 1;
+gameObject enemy[3];
+object_properties enemy_porperties[max_enemy];
+vector2 enemy_destination[max_enemy];
+double enemy_direction[max_enemy];
+double enemy_reload_time[max_enemy];
+
 
 //particle
 const int total_particle = 200;
@@ -31,10 +35,12 @@ double particle_initial_pos = 30;
 int flare_intensity = 20;
 
 //bullets
-bool shoot = 0;
 const int max_bullet = 20;
 bullet bullets[max_bullet];
 double bullet_velocity = 4000;
+//enemy  bullet
+bullet enemy_bullets[max_bullet];
+
 
 //asteroidss
 gameObject asteroids[3];
@@ -43,9 +49,11 @@ double asteroid_scale1 = 0.7;
 double asteroid_scale2 =0.5;
 double asteroid_scale3 = 0.3;
 
+
+
 // int asteroid_top = 0;
 int active_ateroids = 0;
-int asteroid_limit = 15;
+int asteroid_limit = 10;
 
 //environment
 const int num_of_stars = 400;
@@ -63,7 +71,7 @@ void Draw_gameObject(object_properties player);
 void generate_asteroid();
 void create_asteroids(vector2 position, double scale);
 void Draw_flare();
-void Draw_bullet();
+void Draw_bullet(bullet bullets[]);
 void thrust();
 void fire();
 void update();
@@ -73,6 +81,7 @@ void Destroy_asteroid(int index);
 void ControlEnemy();
 void SendEnemy(int level);
 void destroy_enemy(int index);
+void enemy_attack();
 double distance(vector2 a, vector2 b);
 
 void iDraw() {
@@ -94,7 +103,8 @@ void iDraw() {
 		Draw_gameObject(asteroids_properties[i]);
 	}
 	Draw_flare();
-	Draw_bullet();
+	Draw_bullet(bullets);
+	Draw_bullet(enemy_bullets);
 	Draw_gameObject(player);
 	for(int i = 0; i<enemy_count; i++){
 		Draw_gameObject(enemy_porperties[i]);
@@ -281,11 +291,11 @@ void Draw_flare(){
 	}
 }
 
-void Draw_bullet(){
+void Draw_bullet(bullet bulletss[]){
 	iSetColor(247, 49, 5);
 	for(int i = 0; i<max_bullet; i++){
-		if(bullets[i].active){
-			iFilledCircle(bullets[i].position.x-camera_offset.x,bullets[i].position.y-camera_offset.y,5);
+		if(bulletss[i].active){
+			iFilledCircle(bulletss[i].position.x-camera_offset.x,bulletss[i].position.y-camera_offset.y,5);
 		}
 	}
 }
@@ -318,6 +328,7 @@ void update(){
 	// updating the position of the camera
 	camera_offset.x = player.position.x*cam_factor_x-640;
 	camera_offset.y = player.position.y*cam_factor_y-360;
+
 
 	//updating the position of the player
 	player.position.x += player.velocity.x*dt;
@@ -373,10 +384,22 @@ void update(){
 			if(bullets[i].position.x-camera_offset.x<0|| bullets[i].position.x-camera_offset.x>1280 || bullets[i].position.y-camera_offset.y<0||bullets[i].position.y-camera_offset.y>720){
 				bullets[i].active = 0;
 			}
-			active++;
+
 		}
 	}
-	//printf("Active: %d\n",active);
+	//updateing enemy bullets
+	for(int i = 0; i<max_bullet; i++){
+		if(enemy_bullets[i].active){
+			enemy_bullets[i].position.x += enemy_bullets[i].velocity.x*dt;
+			enemy_bullets[i].position.y += enemy_bullets[i].velocity.y*dt;
+
+			if(enemy_bullets[i].position.x-camera_offset.x<0|| enemy_bullets[i].position.x-camera_offset.x>1280 || enemy_bullets[i].position.y-camera_offset.y<0||enemy_bullets[i].position.y-camera_offset.y>720){
+				enemy_bullets[i].active = 0;
+			}
+
+		}
+	}
+
 
 	//updating asteroids
 	while(active_ateroids<asteroid_limit){
@@ -443,6 +466,7 @@ void update(){
 	}
 
 	ControlEnemy();
+	enemy_attack();
 
 	if(enemy_count == 0){
 		SendEnemy(++wave);
@@ -606,18 +630,18 @@ void SendEnemy(int wave){
 		{
 		case bottom:
 			enemy_porperties[i].position.x = 0;
-			enemy_porperties[i].position.y = -world_limit_y/2;
+			enemy_porperties[i].position.y = -world_limit_y;
 			break;
 		case top:
 			enemy_porperties[i].position.x = 0;
-			enemy_porperties[i].position.y = world_limit_y/2;
+			enemy_porperties[i].position.y = world_limit_y;
 			break;
 		case left:
-			enemy_porperties[i].position.x = -world_limit_x/2;
+			enemy_porperties[i].position.x = -world_limit_x;
 			enemy_porperties[i].position.y = 0;
 			break;
 		case right:
-			enemy_porperties[i].position.x = world_limit_x/2;
+			enemy_porperties[i].position.x = world_limit_x;
 			enemy_porperties[i].position.y = 0;
 			break;
 		
@@ -625,12 +649,38 @@ void SendEnemy(int wave){
 			break;
 		}
 		enemy_destination[i] = enemy_porperties[i].position;
+		enemy_reload_time[i] = rand()%(int)reload_time;
 	}
 }
 void destroy_enemy(int index){
 	enemy_porperties[index] = enemy_porperties[enemy_count-1];
+	enemy_destination[index] = enemy_destination[enemy_count-1];
+	enemy_reload_time[index] = enemy_reload_time[enemy_count-1];
+	enemy_direction[index] = enemy_direction[enemy_count-1];
 	enemy_count--;
 }
 double distance(vector2 a, vector2 b){
 	return sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y));
+}
+void enemy_attack(){
+	for(int i = 0; i<enemy_count; i++){
+		if(enemy_reload_time[i]>0.00001){
+			enemy_reload_time[i] -= 5;
+			continue;
+		}
+
+		double enemy_player_angle = atan2(player.position.y-enemy_porperties[i].position.y,player.position.x-enemy_porperties[i].position.x);
+
+		for(int j = 0; j<max_bullet; j++){
+			if(enemy_bullets[j].active)continue;
+			enemy_bullets[j].position = enemy_porperties[i].position;
+			enemy_bullets[j].velocity.x = bullet_velocity*cos(enemy_player_angle);
+			enemy_bullets[j].velocity.y = bullet_velocity*sin(enemy_player_angle);
+			enemy_bullets[j].active = 1;
+			enemy_reload_time[i] = reload_time;
+			break;
+		}
+
+
+	}
 }

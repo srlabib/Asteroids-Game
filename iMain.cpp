@@ -6,20 +6,21 @@
 //#define DEBUG
 
 int wave = 1;
-
+bool gameover = 0;
 //spaceship properties
 gameObject spaceship;
 object_properties player;
 const double dt = 0.005;                   
-const double acceleration = 20000;	
-const double max_velocity = 1500;
+const double acceleration = 20000;
+const double max_velocity = 1200;
 const double friction = 1500;
+bool actv_pl_en_col = 0;
 
 
 //ENEMY
 const int max_enemy = 10;
 const double reload_time = 1000;
-int enemy_count = 1;
+int active_enemy = 1;
 gameObject enemy[3];
 object_properties enemy_porperties[max_enemy];
 vector2 enemy_destination[max_enemy];
@@ -29,10 +30,13 @@ double enemy_reload_time[max_enemy];
 
 //particle
 const int total_particle = 200;
-particle flare[total_particle];
+thrust_particle flare[total_particle];
 const double particle_life = 0.05;
 double particle_initial_pos = 30;
 int flare_intensity = 20;
+const int total_exp_particle = 10000;
+explosion_particle explosion[total_exp_particle];
+int active_exp_particle = 0; //all particles with index smaller than the value is active
 
 //bullets
 const int max_bullet = 20;
@@ -43,20 +47,20 @@ bullet enemy_bullets[max_bullet];
 
 
 //asteroidss
+const int max_asteroids = 1000;
 gameObject asteroids[3];
-object_properties asteroids_properties[1000];
+object_properties asteroids_properties[max_asteroids];
 double asteroid_scale1 = 0.7;
 double asteroid_scale2 =0.5;
 double asteroid_scale3 = 0.3;
 
 
 
-// int asteroid_top = 0;
 int active_ateroids = 0;
 int asteroid_limit = 10;
 
 //environment
-const int num_of_stars = 400;
+const int num_of_stars = 800;
 vector2 stars_pos1[num_of_stars/2];
 vector2 stars_pos2[num_of_stars/2];
 double world_limit_x = 3000;
@@ -83,13 +87,17 @@ void SendEnemy(int level);
 void destroy_enemy(int index);
 void enemy_attack();
 double distance(vector2 a, vector2 b);
+void draw_enemy_health_bar();
+void explode(vector2 pos,vector2 velocity,bool collision);  //collision = 1 when just colliding not exploding
+void draw_explosion();
+
 
 void iDraw() {
 	
 	iClear();
 
 	//the sky
-	iSetColor(3, 11, 41);
+	iSetColor(11, 0, 36);
 	iFilledRectangle(0,0,1280,720);
 	iSetColor(255,255,255);	
 	// stars
@@ -106,20 +114,31 @@ void iDraw() {
 	Draw_bullet(bullets);
 	Draw_bullet(enemy_bullets);
 	Draw_gameObject(player);
-	for(int i = 0; i<enemy_count; i++){
+	for(int i = 0; i<active_enemy; i++){
 		Draw_gameObject(enemy_porperties[i]);
 	}
-
+	draw_enemy_health_bar();
+	draw_explosion();
 
 	#ifdef DEBUG
 	char text[50];
 	sprintf(text,"%lf %lf %lf",player.position.x,player.position.y,player.angle);
 	iSetColor(255,255,255);
 	iText(player.position.x-camera_offset.x-50,player.position.y-camera_offset.y-50,text);
-	for(int i = 0; i<enemy_count; i++){
+	for(int i = 0; i<active_enemy; i++){
 		iLine(enemy_porperties[i].position.x-camera_offset.x,enemy_porperties[i].position.y-camera_offset.y,enemy_destination[i].x-camera_offset.x,enemy_destination[i].y-camera_offset.y);
 	}
 	#endif // DEBUG
+
+	char health[50];
+	sprintf(health, "Health :%g",player.life);
+	iText(1100,700,health,GLUT_BITMAP_HELVETICA_18);
+
+	if(gameover){
+		iText(610,360,"GAME OVER!",GLUT_BITMAP_HELVETICA_18);
+		iDelay(2);
+		start();
+	}
 	
 }
 
@@ -127,10 +146,14 @@ void iDraw() {
 /*
 	function iMouseMove() is called when the user presses and drags the mouse.
 	(mx, my) is the position where the mouse pointer is.
-	*/
+*/
 void iMouseMove(int mx, int my) {
-	player.angle = atan2(my-player.position.y+camera_offset.y,mx-player.position.x+camera_offset.x);
+	
 
+}
+
+void iPassiveMouseMove(int mx, int my){
+	player.angle = atan2(my-player.position.y+camera_offset.y,mx-player.position.x+camera_offset.x);
 }
 
 /*
@@ -147,6 +170,8 @@ void iMouse(int button, int state, int mx, int my) {
 	}
 }
 
+
+
 /*
 	function iKeyboard() is called whenever the user hits a key in keyboard.
 	key- holds the ASCII value of the key pressed.
@@ -155,6 +180,7 @@ void iKeyboard(unsigned char key) {
 	if (key == 'q') {
 		exit(0);
 	}
+	if(key == 'f')fire();
 	if(key == ' ')thrust();
 	if(key == 'p')iPauseTimer(0);
 
@@ -301,8 +327,10 @@ void Draw_bullet(bullet bulletss[]){
 }
 
 void start(){
-	player.position.x = 640;
-	player.position.y = 360;
+	player.position.x = 0;
+	player.position.y = 0;
+	player.velocity.x = 0;
+	player.velocity.y = 0;
 	player.object = spaceship;
 	player.scale = 0.7;
 	player.life = 100;
@@ -318,6 +346,15 @@ void start(){
 		stars_pos2[i].y = -world_limit_y/2+rand()%(int)world_limit_y;
 	}
 
+	//reseting all variables
+	active_ateroids = 0;
+	active_enemy = 0;
+	for(int i = 0; i<max_bullet; i++){
+		bullets[i].active = 0;
+		enemy_bullets[i].active = 0;
+	}
+	gameover = 0;
+	wave = 1;
 	SendEnemy(1);
 
 
@@ -371,6 +408,20 @@ void update(){
 			active++;
 		}
 	}
+
+	//updating explostion particles
+	for(int i = 0; i<active_exp_particle; i++){
+		explosion[i].life -= dt;
+		if(explosion[i].life<=0){
+			explosion[i] = explosion[--active_exp_particle];
+		}
+		explosion[i].position.x += explosion[i].velocity.x*dt;
+		explosion[i].position.y += explosion[i].velocity.y*dt;
+
+		explosion[i].velocity.x /= 1.01;
+		explosion[i].velocity.y /= 1.01;
+
+	}
 	//	printf("Active: %d\t",active);
 
 
@@ -387,7 +438,7 @@ void update(){
 
 		}
 	}
-	//updateing enemy bullets
+	//updating enemy bullets
 	for(int i = 0; i<max_bullet; i++){
 		if(enemy_bullets[i].active){
 			enemy_bullets[i].position.x += enemy_bullets[i].velocity.x*dt;
@@ -419,25 +470,40 @@ void update(){
 	//printf("%d\n",active_ateroids);
 
 
-	// asteroid spaceship collision
+	// asteroid player collision
 	for(int i = 0; i<active_ateroids; i++){
 		if(isColliding(player,asteroids_properties[i])){
 			//iPauseTimer(0);
+			player.life -= 10*asteroids_properties[i].scale;
+			explode(asteroids_properties[i].position,{0,0},0);
+			Destroy_asteroid(i);
 			
-			printf("Collision detected!\n");
 		}
 	}
 
 	// player enemy collision
-	for(int i = 0; i<enemy_count; i++){
+	for(int i = 0; i<active_enemy; i++){
 		if(isColliding(player,enemy_porperties[i])){
-			//destroy both
+			if(actv_pl_en_col){
+				player.life -= 15;
+				actv_pl_en_col = 0;
+			}
 			destroy_enemy(i);
-			printf("Collision with enemy detected!\n");
+		}
+		else actv_pl_en_col = 1;
+	}
+
+	//player enemy_bullet collision
+	for(int i = 0; i < max_bullet; i++){
+		if(!enemy_bullets[i].active)continue;
+		if(distance(player.position,enemy_bullets[i].position)<player.object.collider_radius){
+			player.life -= 5;
+			explode(enemy_bullets[i].position,{0,0},1);
+			enemy_bullets[i].active = 0;
 		}
 	}
 
-	// asteroids bullet collision
+	// asteroids+enemy bullet collision
 	for(int i = 0; i<20; i++){
 		if(!bullets[i].active)continue;
 		for(int j = 0; j<active_ateroids; j++){
@@ -453,13 +519,19 @@ void update(){
 					create_asteroids(asteroids_properties[j].position,asteroid_scale3);
 				}
 				Destroy_asteroid(j);
+				explode(bullets[i].position,{0,0},1);
 				bullets[i].active = 0;
 				
 			}
 		}
-		for(int j = 0; j<enemy_count; j++){
+		for(int j = 0; j<active_enemy; j++){
 			if(distance(enemy_porperties[j].position,bullets[i].position)<enemy_porperties[j].object.collider_radius*enemy_porperties[j].scale)
 			{
+				enemy_porperties[j].life -= 20;
+				bullets[j].active = 0;
+				explode(bullets[i].position,{0,0},1);
+			}
+			if(enemy_porperties[j].life <= 0){
 				destroy_enemy(j);
 			}
 		}
@@ -468,8 +540,13 @@ void update(){
 	ControlEnemy();
 	enemy_attack();
 
-	if(enemy_count == 0){
+	if(active_enemy == 0){
 		SendEnemy(++wave);
+	}
+
+	if(player.life<=0){
+		gameover = 1;
+
 	}
 
 }
@@ -588,8 +665,8 @@ void Destroy_asteroid(int index){
 
 
 void ControlEnemy(){
-	for(int i = 0; i<enemy_count; i++){
-		if(distance(enemy_destination[i],enemy_porperties[i].position)<100){
+	for(int i = 0; i<active_enemy; i++){
+		if(distance(enemy_destination[i],enemy_porperties[i].position)<300){
 			enemy_destination[i].x = camera_offset.x+rand()%1280;
 			enemy_destination[i].y = camera_offset.y+rand()%720;
 		}
@@ -620,8 +697,8 @@ void ControlEnemy(){
 	
 }
 void SendEnemy(int wave){
-	enemy_count = wave;
-	for(int i = 0; i<enemy_count; i++){
+	active_enemy = wave;
+	for(int i = 0; i<active_enemy; i++){
 		enemy_porperties[i].object = enemy[rand()%3];
 		enemy_porperties[i].life = 100;
 		enemy_porperties[i].scale = 0.4;
@@ -630,18 +707,18 @@ void SendEnemy(int wave){
 		{
 		case bottom:
 			enemy_porperties[i].position.x = 0;
-			enemy_porperties[i].position.y = -world_limit_y;
+			enemy_porperties[i].position.y = -world_limit_y*2;
 			break;
 		case top:
 			enemy_porperties[i].position.x = 0;
-			enemy_porperties[i].position.y = world_limit_y;
+			enemy_porperties[i].position.y = world_limit_y*2;
 			break;
 		case left:
-			enemy_porperties[i].position.x = -world_limit_x;
+			enemy_porperties[i].position.x = -world_limit_x*2;
 			enemy_porperties[i].position.y = 0;
 			break;
 		case right:
-			enemy_porperties[i].position.x = world_limit_x;
+			enemy_porperties[i].position.x = world_limit_x*2;
 			enemy_porperties[i].position.y = 0;
 			break;
 		
@@ -653,17 +730,18 @@ void SendEnemy(int wave){
 	}
 }
 void destroy_enemy(int index){
-	enemy_porperties[index] = enemy_porperties[enemy_count-1];
-	enemy_destination[index] = enemy_destination[enemy_count-1];
-	enemy_reload_time[index] = enemy_reload_time[enemy_count-1];
-	enemy_direction[index] = enemy_direction[enemy_count-1];
-	enemy_count--;
+	explode(enemy_porperties[index].position,enemy_porperties[index].velocity,0);
+	enemy_porperties[index] = enemy_porperties[active_enemy-1];
+	enemy_destination[index] = enemy_destination[active_enemy-1];
+	enemy_reload_time[index] = enemy_reload_time[active_enemy-1];
+	enemy_direction[index] = enemy_direction[active_enemy-1];
+	active_enemy--;
 }
 double distance(vector2 a, vector2 b){
 	return sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y));
 }
 void enemy_attack(){
-	for(int i = 0; i<enemy_count; i++){
+	for(int i = 0; i<active_enemy; i++){
 		if(enemy_reload_time[i]>0.00001){
 			enemy_reload_time[i] -= 5;
 			continue;
@@ -680,7 +758,58 @@ void enemy_attack(){
 			enemy_reload_time[i] = reload_time;
 			break;
 		}
+	}
+}
+
+void draw_enemy_health_bar(){
+	for(int i = 0; i<active_enemy; i++){
+		iSetColor(255,255,255);
+		iRectangle(enemy_porperties[i].position.x-camera_offset.x-40,enemy_porperties[i].position.y-camera_offset.y+60,80,5);
+		iSetColor(207, 2, 2);
+		iFilledRectangle(enemy_porperties[i].position.x-camera_offset.x-40,enemy_porperties[i].position.y-camera_offset.y+60,80*enemy_porperties[i].life/100,5);
+	}
+}
 
 
+void explode(vector2 pos,vector2 velocity,bool collision){
+	int particle_count = 200;
+	if(collision)particle_count = 30;
+	for(int i = 0; i<particle_count; i++){
+		double r = rand()%30;
+		double angle = rand()%360;
+		explosion[active_exp_particle].position.x = pos.x+r*cos(angle);
+		explosion[active_exp_particle].position.y = pos.y+r*sin(angle);
+		explosion[active_exp_particle].velocity.x = velocity.x/5;
+		explosion[active_exp_particle].velocity.y = velocity.y/5;
+
+		double v;
+		if(collision){
+			v = rand()%500;
+			explosion[active_exp_particle].radius = 2;
+		}
+		else{
+			if(i<130 ){
+				v = rand()%50;
+				explosion[active_exp_particle].radius = 10;
+			}
+			else{
+				v = 500+rand()%500;
+				explosion[active_exp_particle].radius = 1.5;
+			}
+		}
+		explosion[active_exp_particle].angle = angle*acos(-1)/180;
+		explosion[active_exp_particle].velocity.x += v*cos(angle);
+		explosion[active_exp_particle].velocity.y += v*sin(angle);
+		explosion[active_exp_particle].life = 0.2;
+		active_exp_particle++;
+	}
+}
+
+
+
+void draw_explosion(){
+	iSetColor(255,255,255);
+	for(int i = 0; i<active_exp_particle; i++){
+		iFilledCircle(explosion[i].position.x-camera_offset.x,explosion[i].position.y-camera_offset.y,(explosion[i].radius)*(explosion[i].life/0.2));
 	}
 }

@@ -1,26 +1,42 @@
 //
 //  Original Author: S. M. Shahriar Nirjon
+//  last modified: November 28, 2024
 //
-//  Last Modified by: Mohammad Saifur Rahman
-//  last modified: December 20, 2015
+//  Version: 2.0.2012.2015.2024
 //
-//  Version: 2.0.2012.2015
-//
+
+#pragma comment(lib, "glut32.lib")
+#pragma comment(lib, "glaux.lib")
 
 # include <stdio.h>
 # include <stdlib.h>
-#pragma comment(lib, "glut32.lib")
-#pragma comment(lib, "glaux.lib")
-#include "GL/glut.h"
+#include <windows.h>
+#include "glut.h"
 #include <time.h>
 #include <math.h>
-#include <windows.h>
-#include <GL/glaux.h>
-
-#ifndef STB_IMAGE_IMPLEMENTATION
+#include "glaux.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
-#endif
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "stb_image_resize.h"
+
+typedef struct{
+    unsigned char* data;
+    int width, height, channels;
+} Image;
+
+typedef struct{
+    int x, y;
+    Image img;
+    int visible;
+    unsigned char* collisionMask;
+    int ignoreColor;
+} Sprite;
+
+enum MirrorState {
+    HORIZONTAL,
+    VERTICAL
+};
 
 int iScreenHeight, iScreenWidth;
 int iMouseX, iMouseY;
@@ -34,6 +50,7 @@ void iDraw();
 void iKeyboard(unsigned char);
 void iSpecialKeyboard(unsigned char);
 void iMouseMove(int, int);
+void iPassiveMouseMove(int, int);
 void iMouse(int button, int state, int x, int y);
 
 static void  __stdcall iA0(HWND,unsigned int, unsigned int, unsigned long){if(!iAnimPause[0])iAnimFunction[0]();}
@@ -103,9 +120,6 @@ void iResumeTimer(int index){
 //
 void iShowBMP2(int x, int y, char filename[], int ignoreColor)
 {
-   /// old implementation, causes memory leak
-    /*
-
     AUX_RGBImageRec *TextureImage;
     TextureImage = auxDIBImageLoad(filename);
 
@@ -131,94 +145,219 @@ void iShowBMP2(int x, int y, char filename[], int ignoreColor)
     glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgPixels);
 
     delete []rgPixels;
-    free(TextureImage->data);  // this free doesn't work
-    free(TextureImage);  // this free doesn't work
-    */
-
-/// this implementation doesn't work for some bmp files
-//    int i,j;
-//
-//    FILE* f = fopen(filename, "rb");
-//    unsigned char info[54];
-//    fread(info, sizeof(unsigned char), 54, f); // read the 54-byte header
-//
-//    // extract image height and width from header
-//    int width = *(int*)&info[18];
-//    int height = *(int*)&info[22];
-//
-//    printf("width: %d, height: %d\n",width,height);
-//
-//    int nPixels = width * height;
-//    int *rgPixels = new int[nPixels];
-//
-//    int size = 3 * nPixels;
-//    unsigned char* data = new unsigned char[size]; // allocate 3 bytes per pixel
-//    fread(data, sizeof(unsigned char), size, f); // read the rest of the data at once
-//    fclose(f);
-//
-//
-//    for (i = 0, j=0; i < nPixels; i++, j += 3)
-//    {
-//        int bgr = 0;
-//
-//        //for(int k = 2; k >= 0; k--)
-//        for(int k = 0; k < 3; k++)
-//        {
-//
-//            bgr = ((bgr << 8) | data[j+k]);
-//
-//        }
-//
-//        printf("%x\n",bgr);
-//
-//        rgPixels[i] = (bgr == ignoreColor) ? 0 : 255;
-//
-//        rgPixels[i] = ((rgPixels[i] << 24) | bgr);
-//    }
-//
-//    delete []data;
-//
-//    glRasterPos2f(x, y);
-//    glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgPixels);
-//
-//    delete []rgPixels;
-
-
-/// this probably works for all types of bmp files
-    int  width, height, n;
-    stbi_set_flip_vertically_on_load(1);
-    unsigned char* image = stbi_load(filename, &width, &height, &n, 4);
-
-    int nPixels = width * height;
-    int *rgPixels = new int[nPixels];
-
-    int i,j;
-    for (i = 0, j=0; i < nPixels; i++, j += 4)
-    {
-        int bgr = 0;
-        for(int k = 2; k >= 0; k--)
-        {
-            bgr = ((bgr << 8) | image[j+k]);
-
-        }
-        //printf("%x\n",bgr);
-
-        rgPixels[i] = (bgr == ignoreColor) ? 0 : 255;
-        rgPixels[i] = ((rgPixels[i] << 24) | bgr);
-    }
-
-    glRasterPos2f(x, y);
-    //glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_BYTE, image);
-    glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgPixels);
-    delete[] rgPixels;
-
-    stbi_image_free(image);
-
+    free(TextureImage->data);
+    free(TextureImage);
 }
 
 void iShowBMP(int x, int y, char filename[])
 {
     iShowBMP2(x, y, filename, -1 /* ignoreColor */);
+}
+
+
+// Additional functions for displaying images
+
+void iLoadImage(Image* img, const char filename[])
+{
+    stbi_set_flip_vertically_on_load(true);
+    img->data = stbi_load(filename, &img->width, &img->height, &img->channels, 0);
+    if (img->data == nullptr) {
+        printf("Failed to load image\n");
+        return;
+    }
+}
+
+void iFreeImage(Image* img)
+{
+    stbi_image_free(img->data);
+}
+
+void iShowImage2(int x, int y, Image* img, int ignoreColor)
+{
+    int width = img->width;
+    int height = img->height;
+    int channels = img->channels;
+    unsigned char* data = img->data;
+    if (ignoreColor != -1) {
+        // Iterate over the pixels
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int index = (y * width + x) * channels;
+                // Check if the pixel is the color we want to ignore
+                if (data[index] == (ignoreColor & 0xFF) &&
+                    data[index + 1] == ((ignoreColor >> 8) & 0xFF) &&
+                    data[index + 2] == ((ignoreColor >> 16) & 0xFF)) {
+                    // Set the pixel to 0
+                    data[index] = 0;
+                    data[index + 1] = 0;
+                    data[index + 2] = 0;
+                    if (channels == 4) {
+                        data[index + 3] = 0;
+                    }
+                }
+            }
+        }
+    }
+    glRasterPos2f(x, y);
+    glDrawPixels(width, height, (channels == 4)? GL_RGBA:GL_RGB, GL_UNSIGNED_BYTE, data);
+}
+
+void iShowImage(int x, int y, Image* img)
+{
+    iShowImage2(x, y, img, -1 /* ignoreColor */);
+}
+
+void iResizeImage(Image* img, int width, int height)
+{
+    int imgWidth = img->width;
+    int imgHeight = img->height;
+    int channels = img->channels;
+    unsigned char* data = img->data;
+    unsigned char* resizedData = new unsigned char[width * height * channels];
+    stbir_resize_uint8(data, imgWidth, imgHeight, 0, resizedData, width, height, 0, channels);
+    stbi_image_free(data);
+    img->data = resizedData;
+    img->width = width;
+    img->height = height;
+}
+
+void iMirrorImage(Image* img, MirrorState state)
+{
+    int width = img->width;
+    int height = img->height;
+    int channels = img->channels;
+    unsigned char* data = img->data;
+    unsigned char* mirroredData = new unsigned char[width * height * channels];
+    if (state == HORIZONTAL) {
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int index = (y * width + x) * channels;
+                int mirroredIndex = (y * width + (width - x - 1)) * channels;
+                for (int c = 0; c < channels; c++) {
+                    mirroredData[mirroredIndex + c] = data[index + c];
+                }
+            }
+        }
+    } else if (state == VERTICAL) {
+        for (int y = 0; y < height; y++) {
+            int mirroredY = height - y - 1;
+            for (int x = 0; x < width; x++) {
+                int index = (y * width + x) * channels;
+                int mirroredIndex = (mirroredY * width + x) * channels;
+                for (int c = 0; c < channels; c++) {
+                    mirroredData[mirroredIndex + c] = data[index + c];
+                }
+            }
+        }
+    }
+    stbi_image_free(data);
+    img->data = mirroredData;
+}
+
+
+// ignorecolor = hex color code 0xRRGGBB
+void iUpdateCollisionMask(Sprite* s)
+{
+    Image* img = &s->img;
+    int ignorecolor = s->ignoreColor;
+    if(ignorecolor == -1){
+        s->collisionMask = nullptr;
+        return;
+    }
+    int width = img->width;
+    int height = img->height;
+    int channels = img->channels;
+    unsigned char* data = img->data;
+    if (s->collisionMask != nullptr) {
+        delete[] s->collisionMask;
+    }
+    unsigned char* collisionMask = new unsigned char[width * height];
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int index = (y * width + x) * channels;
+            int isTransparent = (channels == 4 && data[index + 3] == 0);
+            if ((data[index] == (ignorecolor & 0xFF) &&
+                data[index + 1] == ((ignorecolor >> 8) & 0xFF) &&
+                data[index + 2] == ((ignorecolor >> 16) & 0xFF)) || 
+                isTransparent) {
+                collisionMask[y * width + x] = 0;
+            } else {
+                collisionMask[y * width + x] = 1;
+            }
+        }
+    }
+    s->collisionMask = collisionMask;
+}
+
+int iCheckCollision(Sprite* s1, Sprite* s2){
+    Image* img1 = &s1->img;
+    int width1 = img1->width;
+    int height1 = img1->height;
+    unsigned char* collisionMask1 = s1->collisionMask;
+    Image* img2 = &s2->img;
+    int width2 = img2->width;
+    int height2 = img2->height;
+    unsigned char* collisionMask2 = s2->collisionMask;
+    int x1 = s1->x;
+    int y1 = s1->y;
+    int x2 = s2->x;
+    int y2 = s2->y;
+    // check if the two images overlap
+    int startX = (x1 > x2) ? x1 : x2;
+    int endX = (x1 + width1 < x2 + width2) ? x1 + width1 : x2 + width2;
+    int startY = (y1 > y2) ? y1 : y2;
+    int endY = (y1 + height1 < y2 + height2) ? y1 + height1 : y2 + height2;
+    int noOverlap = startX >= endX || startY >= endY;
+    // If collisionMasks are not set, check the whole image for collision
+    if(collisionMask1 == nullptr || collisionMask2 == nullptr){
+        return noOverlap ? 0 : 1;
+    }
+    // now collisionMasks are set. Check only the overlapping region
+    if(noOverlap){
+        return 0;
+    }
+    for(int y = startY; y < endY; y++){
+        for(int x = startX; x < endX; x++){
+            int index1 = (y - y1) * width1 + (x - x1);
+            int index2 = (y - y2) * width2 + (x - x2);
+            if(collisionMask1[index1] && collisionMask2[index2]){
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+void iLoadSprite(Sprite* s, const char* filename, int ignoreColor){
+    iLoadImage(&s->img, filename);
+    s->ignoreColor = ignoreColor;
+    iUpdateCollisionMask(s);
+}
+
+void iSetSpritePosition(Sprite* s, int x, int y){
+    s->x = x;
+    s->y = y;
+}
+
+void iShowSprite(Sprite* s){
+    iShowImage2(s->x, s->y, &s->img, s->ignoreColor);
+}
+
+void iResizeSprite(Sprite* s, int width, int height){
+    iResizeImage(&s->img, width, height);
+    iUpdateCollisionMask(s);
+}
+
+void iMirrorSprite(Sprite* s, MirrorState state){
+    iMirrorImage(&s->img, state);
+    iUpdateCollisionMask(s);
+}
+
+void iFreeSprite(Sprite* s){
+    iFreeImage(&s->img);
+    if(s->collisionMask != nullptr){
+        delete[] s->collisionMask;
+    }
 }
 
 void iGetPixelColor (int cursorX, int cursorY, int rgb[])
@@ -231,10 +370,10 @@ void iGetPixelColor (int cursorX, int cursorY, int rgb[])
     rgb[1] = pixel[1];
     rgb[2] = pixel[2];
 
-    //printf("%d %d %d\n",pixel[0],pixel[1],pixel[2]);
+    // printf("%d %d %d\n",pixel[0],pixel[1],pixel[2]);
 }
 
-void iText(GLdouble x, GLdouble y, char *str, void* font=GLUT_BITMAP_8_BY_13)
+void iText(double x, double y, char *str, void* font=GLUT_BITMAP_8_BY_13)
 {
     glRasterPos3d(x, y, 0);
     int i;
@@ -401,7 +540,7 @@ void iFilledEllipse(double x, double y, double a, double b, int slices=100)
 //  (x, y) - The pivot point for rotation
 //  degree - degree of rotation
 //
-// After calling iRotate(), evrey subsequent rendering will
+// After calling iRotate(), every subsequent rendering will
 // happen in rotated fashion. To stop rotation of subsequent rendering,
 // call iUnRotate(). Typical call pattern would be:
 //      iRotate();
@@ -501,6 +640,16 @@ void mouseMoveHandlerFF(int mx, int my)
     glFlush();
 }
 
+
+void mousePassiveMoveHandlerFF(int x, int y)
+{
+    iMouseX = x;
+    iMouseY = iScreenHeight - y;
+    iPassiveMouseMove(iMouseX, iMouseY);
+
+    glFlush();
+}
+
 void mouseHandlerFF(int button, int state, int x, int y)
 {
     iMouseX = x;
@@ -534,6 +683,7 @@ void iInitialize(int width=500, int height=500, char *title="iGraphics")
     glutSpecialFunc(keyboardHandler2FF); //special keys
     glutMouseFunc(mouseHandlerFF);
     glutMotionFunc(mouseMoveHandlerFF);
+    glutPassiveMotionFunc(mousePassiveMoveHandlerFF);
     glutIdleFunc(animFF) ;
 
     //

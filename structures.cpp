@@ -24,10 +24,18 @@ struct object_properties{
 	double life = 0;
 };
 
-struct particle{
+struct thrust_particle{
 	double position;
 	double velocity;
 	double life = 0;
+};
+
+struct explosion_particle{
+	vector2 position;
+	vector2 velocity;
+	double life;
+	double angle;
+	double radius; 
 };
 
 struct bullet{

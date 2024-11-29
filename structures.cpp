@@ -49,3 +49,19 @@ enum side{
 	bottom,top,left,right
 };
 
+
+char message[13][20] = {
+	"Nice Work!",
+	"Well Done!",
+	"You're on fire!",
+	"Impressive!",
+	"Keep it up!",
+	"Awesome!",
+	"You're unstoppable!",
+	"Fantastic!",
+	"Wave conquered!",
+	"Outstanding!",
+	"You're crushing it!",
+	"Legendary!",
+	"Victory secured!"
+};

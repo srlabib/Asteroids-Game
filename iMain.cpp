@@ -7,6 +7,7 @@
 
 int wave = 1;
 bool gameover = 0;
+
 //spaceship properties
 gameObject spaceship;
 object_properties player;
@@ -15,6 +16,13 @@ const double acceleration = 20000;
 const double max_velocity = 1200;
 const double friction = 1500;
 bool actv_pl_en_col = 0;
+
+//score
+int total_score = 0;
+int	destroy_count = 0;
+int	kill_count = 0;
+double messageTimer = 0;
+int msg=0;
 
 
 //ENEMY
@@ -60,7 +68,7 @@ int active_ateroids = 0;
 int asteroid_limit = 10;
 
 //environment
-const int num_of_stars = 800;
+const int num_of_stars = 400;
 vector2 stars_pos1[num_of_stars/2];
 vector2 stars_pos2[num_of_stars/2];
 double world_limit_x = 3000;
@@ -130,12 +138,27 @@ void iDraw() {
 	}
 	#endif // DEBUG
 
-	char health[50];
-	sprintf(health, "Health :%g",player.life);
-	iText(1100,700,health,GLUT_BITMAP_HELVETICA_18);
+	char string[50];
+	sprintf(string, "Health :%g",player.life);
+	iText(1000,670,string,GLUT_BITMAP_8_BY_13);
+	iSetColor(2, 145, 227);
+	iFilledRectangle(1000,650,220*player.life/100,8);
+	iSetColor(255,255,255);
+	iRectangle(1000,650,220,8);
+	sprintf(string,"Wave: %d",wave);
+	iText(600,650,string,GLUT_BITMAP_9_BY_15);
+	sprintf(string,"Score: %d",total_score);
+	iText(50,650,string,GLUT_BITMAP_9_BY_15);
+
+	
+	if(messageTimer>0){
+		int msg_size = strlen(message[msg]);
+		iText(600-msg_size*3,570,message[msg],GLUT_BITMAP_TIMES_ROMAN_24);
+	}
+
 
 	if(gameover){
-		iText(610,360,"GAME OVER!",GLUT_BITMAP_HELVETICA_18);
+		iText(610,360,"GAME OVER!",GLUT_BITMAP_TIMES_ROMAN_24);
 		iDelay(2);
 		start();
 	}
@@ -183,6 +206,11 @@ void iKeyboard(unsigned char key) {
 	if(key == 'f')fire();
 	if(key == ' ')thrust();
 	if(key == 'p')iPauseTimer(0);
+
+	if(key == 'x'){
+		msg++;
+		msg%=13;
+	}
 
 }
 
@@ -318,10 +346,11 @@ void Draw_flare(){
 }
 
 void Draw_bullet(bullet bulletss[]){
-	iSetColor(247, 49, 5);
+	iSetColor(255,255,255);
 	for(int i = 0; i<max_bullet; i++){
 		if(bulletss[i].active){
-			iFilledCircle(bulletss[i].position.x-camera_offset.x,bulletss[i].position.y-camera_offset.y,5);
+			//iFilledCircle(bulletss[i].position.x-camera_offset.x,bulletss[i].position.y-camera_offset.y,5);
+			iLine(bulletss[i].position.x-camera_offset.x,bulletss[i].position.y-camera_offset.y,bulletss[i].position.x-camera_offset.x+0.003*bulletss[i].velocity.x,bulletss[i].position.y-camera_offset.y+0.003*bulletss[i].velocity.y);
 		}
 	}
 }
@@ -521,6 +550,7 @@ void update(){
 				Destroy_asteroid(j);
 				explode(bullets[i].position,{0,0},1);
 				bullets[i].active = 0;
+				destroy_count++;
 				
 			}
 		}
@@ -530,19 +560,25 @@ void update(){
 				enemy_porperties[j].life -= 20;
 				bullets[j].active = 0;
 				explode(bullets[i].position,{0,0},1);
+				total_score+=50;
 			}
 			if(enemy_porperties[j].life <= 0){
 				destroy_enemy(j);
+				kill_count++;
 			}
 		}
 	}
 
+	total_score = kill_count*200+destroy_count*150;
 	ControlEnemy();
 	enemy_attack();
 
 	if(active_enemy == 0){
+		messageTimer = 1;
+		msg = rand()%12;
 		SendEnemy(++wave);
 	}
+	if(messageTimer>0)messageTimer -= dt;
 
 	if(player.life<=0){
 		gameover = 1;

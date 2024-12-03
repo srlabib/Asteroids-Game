@@ -49,6 +49,13 @@ enum side{
 	bottom,top,left,right
 };
 
+enum page{
+	MainMenu,HighScore,EnterName,GameOver,credit,Game
+};
+
+enum button {
+	startgame,continuegame,multiplayer,exitt
+};
 
 char message[13][20] = {
 	"Nice Work!",

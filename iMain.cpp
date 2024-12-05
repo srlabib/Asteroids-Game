@@ -4,6 +4,7 @@
 #include <time.h>
 
 //#define DEBUG
+#define DEV_MODE
 
 int wave = 1;
 bool gameover = 0;
@@ -17,12 +18,16 @@ bool saved_game_available = 0;
 //MainMenu Stuffs
 Image MainMenuBG;
 Image GameLogo;
-vector2 buttons[4] = {{450,379},{450,287},{450,194},{450,101}};
+vector2 buttons[4] = {{450,379},{450,287},{450,194},{450,101}}; //MainMenu Buttons position
 int buttonHeight = 80, buttonWidth = 375;
 Image ButtonImage[5];
 Image ButtonHighligter;
 vector2 ButtonHighlighterpos = {-1,-1};
 bool paused = 0;
+
+//UI
+Image GameOverText;
+Image PausedText;
 
 double countdown = 0;
 //spaceship properties
@@ -48,20 +53,20 @@ const double reload_time = 1000;
 int active_enemy = 1;
 gameObject enemy[3];
 object_properties enemy_porperties[max_enemy];
-vector2 enemy_destination[max_enemy];
-double enemy_direction[max_enemy];
+vector2 enemy_destination[max_enemy];   //coordinate of destinatoin of each enemy chosen randomly
+double enemy_direction[max_enemy];      //current direction of enenmy (toward destination)
 double enemy_reload_time[max_enemy];
 
 
 //particle
 const int total_particle = 200;
-thrust_particle flare[total_particle];
+thrust_particle flare[total_particle];                //particles for spaceship thrust
 const double particle_life = 0.05;
 const double particle_initial_pos = 30;
 const int flare_intensity = 20;
 const int total_exp_particle = 10000;
-explosion_particle explosion[total_exp_particle];
-int active_exp_particle = 0; //all particles with index smaller than the value is active
+explosion_particle explosion[total_exp_particle];    //particles for explosion
+int active_exp_particle = 0;                         //all particles with index smaller than the value is active
 
 //bullets
 const int max_bullet = 20;
@@ -149,7 +154,7 @@ void iDraw() {
 	(mx, my) is the position where the mouse pointer is.
 */
 void iMouseMove(int mx, int my) {
-
+	
 
 }
 
@@ -168,6 +173,18 @@ void iPassiveMouseMove(int mx, int my){
 			}
 		}
 	}
+	if(state == Game && gameover){
+		if(40<=mx && mx<=160 && 60<=my && my <= 100){
+			ButtonHighlighterpos = {30,35};
+		}
+		else if(1070<=mx && mx<=1201 && 60<=my && my <= 100){
+			ButtonHighlighterpos = {1070,35};
+		}
+		else{
+			ButtonHighlighterpos = {-1,-1};
+		}
+	}
+	
 }
 
 /*
@@ -175,6 +192,9 @@ void iPassiveMouseMove(int mx, int my){
 	(mx, my) is the position where the mouse pointer is.
 	*/
 void iMouse(int button, int stat, int mx, int my) {
+	if (button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN) {
+		printf("%d %d\n",mx,my);
+	}
 	if(state == Game && !paused && countdown<=0){
 		if (button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN) {
 			fire();
@@ -183,10 +203,27 @@ void iMouse(int button, int stat, int mx, int my) {
 
 		}
 	}
+	if(state == Game && gameover){
+		if(ButtonHighlighterpos.x == 30 && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
+			start();
+		}
+		if(ButtonHighlighterpos.x == 1070 && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
+			state = MainMenu;
+			iLoadImage(&ButtonHighligter,"assets/Buttons/HoverBar.png");
+			saved_data = fopen("gamedata.bin","wb");
+			saved_game_available = 0;
+			fwrite(&saved_game_available,sizeof(bool),0,saved_data);
+			saved_data = fopen("gamedata.bin","rb");
+			if(fread(&saved_game_available,sizeof(bool),0,saved_data)!=1){
+				printf("Error reADING DATA\n");
+			}
+		}
+	}
 	if(state == MainMenu){
 		if(ButtonHighlighterpos.y == buttons[startgame].y && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
 			start();
 			state = Game;
+			ButtonHighlighterpos = {-1,-1};
 			iResumeTimer(game_clock);
 		}
 		if(saved_game_available && ButtonHighlighterpos.y == buttons[continuegame].y && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
@@ -195,7 +232,7 @@ void iMouse(int button, int stat, int mx, int my) {
 			gameover = 0;
 			countdown = 3;
 			state = Game;
-			printf("score : %d",total_score);
+			ButtonHighlighterpos = {-1,-1};
 			iResumeTimer(game_clock);
 		}
 
@@ -205,12 +242,13 @@ void iMouse(int button, int stat, int mx, int my) {
 
 	}
 
+
 }
 
 
 
 /*
-	function yboard() is called whenever the user hits a key in keyboard.
+	function ikeyboard() is called whenever the user hits a key in keyboard.
 	key- holds the ASCII value of the key pressed.
 */
 void iKeyboard(unsigned char key) {
@@ -220,7 +258,7 @@ void iKeyboard(unsigned char key) {
 	if(!paused && state == Game ){
 		if(key == 'f')fire();
 		if(key == ' ')thrust();
-		if(key == 'p'){
+		if(key == 27){
 			paused = 1;
 			iPauseTimer(0);
 		}
@@ -236,25 +274,19 @@ void iKeyboard(unsigned char key) {
 			saved_data = fopen("gamedata.bin","rb");
 			fread(&saved_game_available,sizeof(bool),1,saved_data);
 			state = MainMenu;
-
+			iLoadImage(&ButtonHighligter,"assets/Buttons/HoverBar.png");
 		}
 	}
 
-	if(gameover){
-		if(key == 'r'){
-			start();
-		}
-		if(key == 'e'){
-			state = MainMenu;
-			saved_data = fopen("gamedata.bin","wb");
-			saved_game_available = 0;
-			fwrite(&saved_game_available,sizeof(bool),0,saved_data);
-			saved_data = fopen("gamedata.bin","rb");
-			if(fread(&saved_game_available,sizeof(bool),0,saved_data)!=1){
-				printf("Error reADING DATA\n");
-			}
-		}
+
+
+#ifdef DEV_MODE
+	if(key == 'x'){
+		player.life = 0;
+		printf("Player %g %g\n",player.position.x,player.position.y);
+		printf("Camera %g %g\n",camera_offset.x,camera_offset.y);
 	}
+#endif
 	
 
 }
@@ -334,30 +366,31 @@ void inititalize_gameObjects(gameObject *object, char filename[]){
 
 }
 
-void Draw_gameObject(object_properties player){
+
+void Draw_gameObject(object_properties object){
 
 
-	for(int i = 0; i<player.object.number_of_polygons; i++){
+	for(int i = 0; i<object.object.number_of_polygons; i++){
 
-		double X[player.object.size[i]];
-		double Y[player.object.size[i]];
+		double X[object.object.size[i]];
+		double Y[object.object.size[i]];
 		
-		for(int j = 0; j<player.object.size[i]; j++){
+		for(int j = 0; j<object.object.size[i]; j++){
 
 			//converting cartesian coordinate to polar coordinate
-			double r = sqrt(player.object.x[i][j]*player.object.x[i][j]*player.scale*player.scale + player.object.y[i][j]*player.object.y[i][j]*player.scale*player.scale);
-			double theta = atan2(player.object.y[i][j],player.object.x[i][j]);
+			double r = sqrt(object.object.x[i][j]*object.object.x[i][j]*object.scale*object.scale + object.object.y[i][j]*object.object.y[i][j]*object.scale*object.scale);
+			double theta = atan2(object.object.y[i][j],object.object.x[i][j]);
 
 			//modifying angle and converting back to cartesian
-			X[j] = player.position.x + r*cos(theta+player.angle)-camera_offset.x;
-			Y[j] = player.position.y + r*sin(theta+player.angle)-camera_offset.y;
+			X[j] = object.position.x + r*cos(theta+object.angle)-camera_offset.x;
+			Y[j] = object.position.y + r*sin(theta+object.angle)-camera_offset.y;
 
 		}
-		iSetColor(player.object.color[i][0],player.object.color[i][1],player.object.color[i][2]);
-		iFilledPolygon(X,Y,player.object.size[i]);
+		iSetColor(object.object.color[i][0],object.object.color[i][1],object.object.color[i][2]);
+		iFilledPolygon(X,Y,object.object.size[i]);
 
 		#ifdef DEBUG
-		for(int j = 0; j<player.object.size[i]; j++){
+		for(int j = 0; j<object.object.size[i]; j++){
 			iSetColor(255, 17, 0);
 			iPoint(X[j],Y[j],2);	
 		}
@@ -366,7 +399,7 @@ void Draw_gameObject(object_properties player){
 	}
 	#ifdef DEBUG
 	iSetColor(255,255,255);
-	iCircle(player.position.x-camera_offset.x,player.position.y-camera_offset.y,player.object.collider_radius*player.scale);
+	iCircle(object.position.x-camera_offset.x,object.position.y-camera_offset.y,object.object.collider_radius*object.scale);
 	
 	#endif // DEBUG
 	
@@ -446,14 +479,35 @@ void Draw_MainGame(){
 	if(countdown>0){
 		char count[2];
 		sprintf(count,"%d",(int)ceil(countdown));
-		iText(630,360,count,GLUT_BITMAP_TIMES_ROMAN_24);
+		iText(630,500,count,GLUT_BITMAP_TIMES_ROMAN_24);
 
 	}
 
 
 	if(gameover){
-		iText(610,360,"GAME OVER!",GLUT_BITMAP_TIMES_ROMAN_24);
+		//iText(610,360,"GAME OVER!",GLUT_BITMAP_TIMES_ROMAN_24);
+		iShowImage2(400,460,&GameOverText,0);
+		char scoretext[50];
+		sprintf(scoretext,"Total Score: %d",total_score);
+		iText(400,300,scoretext,GLUT_BITMAP_9_BY_15);
+		sprintf(scoretext,"High Score: %d",99999);
+		iText(680,300,scoretext,GLUT_BITMAP_9_BY_15);
+		iText(50,50,"Try Again",GLUT_BITMAP_TIMES_ROMAN_24);
+		iText(1080,50,"Main Menu",GLUT_BITMAP_TIMES_ROMAN_24);
+
+		if(ButtonHighlighterpos.y != -1){
+			iShowImage2(ButtonHighlighterpos.x,ButtonHighlighterpos.y,&ButtonHighligter,0);
+		}
 	}
+	else if(paused){
+		iShowImage2(480,460,&PausedText,0);
+		iText(400,270,"[Press r to resume]",GLUT_BITMAP_9_BY_15);
+		iText(700,270,"[Press e to exit]",GLUT_BITMAP_9_BY_15);
+	}
+	else{
+		iText(1000,50,"[Press esc to pause the game]",GLUT_BITMAP_9_BY_15);
+	}
+
 }
 
 
@@ -488,6 +542,9 @@ void start(){
 
 	cam_factor_x = (world_limit_x/2-640.0)/(world_limit_x/2);
 	cam_factor_y = (world_limit_y/2-320.0)/(world_limit_y/2);
+
+	camera_offset.x = player.position.x*cam_factor_x-640;
+	camera_offset.y = player.position.y*cam_factor_y-360;
 
 	//setting random postion of the stars
 	for(int i = 0; i<num_of_stars/2; i++){
@@ -727,6 +784,7 @@ void update_gameplay(){
 
 	if(player.life<=0){
 		gameover = 1;
+		iResizeImage(&ButtonHighligter,140,45);
 		explode(player.position,player.velocity,0);
 		paused = 1;
 
@@ -1031,6 +1089,8 @@ void Load_resources(){
 	iLoadImage(&ButtonImage[3],"assets/Buttons/Exit.png");
 	iLoadImage(&ButtonImage[4],"assets/Buttons/x.png");
 	iLoadImage(&ButtonHighligter,"assets/Buttons/HoverBar.png");
+	iLoadImage(&GameOverText,"assets/GameOverText.png");
+	iLoadImage(&PausedText,"assets/PausedText.png");
 
 
 

@@ -2,17 +2,22 @@
 #include <stdlib.h>
 #include "structures.cpp"
 #include <time.h>
+#include<windows.h>
 
 //#define DEBUG
 #define DEV_MODE
 
 int wave = 1;
 bool gameover = 0;
+bool multiplayer = 0;
 page state;
 int game_clock;  // timer for main game
 int menu_clock;  // timer for menu and others
+clock_t startTime,currTime;
+bool playing = 0;
 
 FILE *saved_data;
+FILE *High_score_Data;
 bool saved_game_available = 0;
 
 //MainMenu Stuffs
@@ -28,28 +33,37 @@ bool paused = 0;
 //UI
 Image GameOverText;
 Image PausedText;
+Image count_digit[3];
 
 double countdown = 0;
 //spaceship properties
 gameObject spaceship;
-object_properties player;
+object_properties player,player2;
 const double dt = 0.005;
 const double acceleration = 20000;
 const double max_velocity = 1200;
 const double friction = 1500;
 bool actv_pl_en_col = 1;
+const double player_rt = 0.05;//player reload time
+double reloadTime_p1 = player_rt,reloadTime_p2 = player_rt;
+
 
 //score
 int total_score = 0;
+int high_score = 0;
 int	destroy_count = 0;
 int	kill_count = 0;
 double messageTimer = 0;
 int msg=0;
+//player2 score (multiplayer)
+int total_score_p2 = 0;
+int	destroy_count_p2 = 0;
+int	kill_count_p2 = 0;
 
 
 //ENEMY
 const int max_enemy = 10;
-const double reload_time = 1000;
+const double reload_time = 500; // enemy realod time
 int active_enemy = 1;
 gameObject enemy[3];
 object_properties enemy_porperties[max_enemy];
@@ -59,7 +73,7 @@ double enemy_reload_time[max_enemy];
 
 
 //particle
-const int total_particle = 200;
+const int total_particle = 400;
 thrust_particle flare[total_particle];                //particles for spaceship thrust
 const double particle_life = 0.05;
 const double particle_initial_pos = 30;
@@ -72,6 +86,7 @@ int active_exp_particle = 0;                         //all particles with index 
 const int max_bullet = 20;
 bullet bullets[max_bullet];
 double bullet_velocity = 4000;
+gameObject bullet_obj;
 //enemy  bullet
 bullet enemy_bullets[max_bullet];
 
@@ -83,6 +98,14 @@ object_properties asteroids_properties[max_asteroids];
 double asteroid_scale1 = 0.7;
 double asteroid_scale2 =0.5;
 double asteroid_scale3 = 0.3;
+
+
+//multiplayer mode
+const vector2 player1_initital_pos = {-426,0},player2_inititial_pos = {+426,0};
+bool p1_thrust_toggle = 0;
+bool p2_thrust_toggle = 0;
+double turn_p1 = 0,turn_p2 = 0;
+bool p1_Dead = 0,p2_Dead = 0;
 
 
 
@@ -100,7 +123,8 @@ vector2 camera_offset = {0,0};
 double cam_factor_x,cam_factor_y;
 
 
-void inititalize_gameObjects(gameObject *object, char filename[]);
+
+void initializeGameobject(gameObject *object, char filename[]);
 void Draw_MainGame();
 void Draw_mainMenu();
 void Draw_gameObject(object_properties player);
@@ -108,11 +132,11 @@ void generate_asteroid();
 void create_asteroids(vector2 position, double scale);
 void Draw_flare();
 void Draw_bullet(bullet bullets[]);
-void thrust();
-void fire();
+void thrust(object_properties *);
+void fire(object_properties *);
 void update_gameplay();
 void update_UI();
-void start();
+void start(int mode);
 bool isColliding(object_properties object1, object_properties object2);
 void Destroy_asteroid(int index);
 void ControlEnemy();
@@ -128,6 +152,8 @@ void draw_gameover_screen();
 void draw_pause_screen();
 void SaveGame();
 void LoadGame();
+void player_movement(object_properties *player);
+void player_collision(object_properties *player);
 int isFileEmpty(FILE *file) {
     fseek(file, 0, SEEK_END); // Move to the end of the file
     long size = ftell(file); // Get the position (size in bytes)
@@ -159,10 +185,11 @@ void iMouseMove(int mx, int my) {
 }
 
 void iPassiveMouseMove(int mx, int my){
-	if(state == Game &&!paused && countdown <=0){
+	//Updating the direction of the spaceship toward the mouse pointer
+	if(!multiplayer && state == Game &&!paused && countdown <=0){
 		player.angle = atan2(my-player.position.y+camera_offset.y,mx-player.position.x+camera_offset.x);
 	}
-	if(state == MainMenu){
+	if(state == MainMenu){   //Setting up mainMenu Button highlighter position in case of hovering
 		for(int i = 0;i < 4; i++){
 			if(buttons[i].x<=mx && mx<= buttons[i].x+buttonWidth && buttons[i].y<=my && my<= buttons[i].y+buttonHeight){
 				ButtonHighlighterpos = buttons[i];
@@ -173,15 +200,15 @@ void iPassiveMouseMove(int mx, int my){
 			}
 		}
 	}
-	if(state == Game && gameover){
+	if(state == Game && gameover){ // setting up gameover screen buttons position in case of hovering
 		if(40<=mx && mx<=160 && 60<=my && my <= 100){
-			ButtonHighlighterpos = {30,35};
+			ButtonHighlighterpos = {30,35}; // highlighter on the try again button
 		}
 		else if(1070<=mx && mx<=1201 && 60<=my && my <= 100){
-			ButtonHighlighterpos = {1070,35};
+			ButtonHighlighterpos = {1070,35}; // highlighter on the mainmenu button
 		}
 		else{
-			ButtonHighlighterpos = {-1,-1};
+			ButtonHighlighterpos = {-1,-1}; // inactivating highlighter 
 		}
 	}
 	
@@ -193,35 +220,39 @@ void iPassiveMouseMove(int mx, int my){
 	*/
 void iMouse(int button, int stat, int mx, int my) {
 	if (button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN) {
-		printf("%d %d\n",mx,my);
+
 	}
-	if(state == Game && !paused && countdown<=0){
+	if(!multiplayer && state == Game && !paused && countdown<=0){
 		if (button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN) {
-			fire();
+			if(reloadTime_p1<=0) fire(&player); //firing of left mouse click
 		}
 		if (button == GLUT_RIGHT_BUTTON && stat == GLUT_DOWN) {
 
 		}
 	}
-	if(state == Game && gameover){
+	if(state == Game && gameover){ // mouse control when on gameover screen
 		if(ButtonHighlighterpos.x == 30 && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
-			start();
+			if(multiplayer)start(multiplayer_mode);   // restarting game clicking on try again button
+			else start(Game);
 		}
 		if(ButtonHighlighterpos.x == 1070 && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
-			state = MainMenu;
+			state = MainMenu;  //going to main menu clicking on main menu button
 			iLoadImage(&ButtonHighligter,"assets/Buttons/HoverBar.png");
-			saved_data = fopen("gamedata.bin","wb");
-			saved_game_available = 0;
-			fwrite(&saved_game_available,sizeof(bool),0,saved_data);
-			saved_data = fopen("gamedata.bin","rb");
-			if(fread(&saved_game_available,sizeof(bool),0,saved_data)!=1){
-				printf("Error reADING DATA\n");
+			if(!multiplayer){
+				saved_data = fopen("gamedata.bin","wb");
+				saved_game_available = 0;
+				fwrite(&saved_game_available,sizeof(bool),1,saved_data); //erasing previous saved game data
+				fclose(saved_data);
+				saved_data = fopen("gamedata.bin","rb");
+				if(fread(&saved_game_available,sizeof(bool),1,saved_data)!=1){
+					printf("Error reADING DATA\n");
+				}
 			}
 		}
 	}
-	if(state == MainMenu){
+	if(state == MainMenu){  //mouse control when on the mainmenu
 		if(ButtonHighlighterpos.y == buttons[startgame].y && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
-			start();
+			start(Game);
 			state = Game;
 			ButtonHighlighterpos = {-1,-1};
 			iResumeTimer(game_clock);
@@ -230,10 +261,20 @@ void iMouse(int button, int stat, int mx, int my) {
 			LoadGame();
 			paused = 0;
 			gameover = 0;
+			multiplayer = 0;
 			countdown = 3;
 			state = Game;
 			ButtonHighlighterpos = {-1,-1};
 			iResumeTimer(game_clock);
+		}
+
+		if(ButtonHighlighterpos.y == buttons[Multi_player].y && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
+			start(multiplayer_mode);
+			state = Game;
+			ButtonHighlighterpos = {-1,-1};
+			iResumeTimer(game_clock);
+			multiplayer = 1;
+
 		}
 
 		if(ButtonHighlighterpos.y == buttons[exitt].y && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
@@ -252,29 +293,42 @@ void iMouse(int button, int stat, int mx, int my) {
 	key- holds the ASCII value of the key pressed.
 */
 void iKeyboard(unsigned char key) {
-	if (key == 'q') {
-		exit(0);
-	}
-	if(!paused && state == Game ){
-		if(key == 'f')fire();
-		if(key == ' ')thrust();
-		if(key == 27){
+
+	if(!multiplayer&&!paused && state == Game ){
+		if(key == 'f')if(reloadTime_p1<=0)fire(&player);
+		if(key == ' ')thrust(&player);
+		if(key == 27){  // ecape button ASCII = 27 // game paused on pressing esc
 			paused = 1;
 			iPauseTimer(0);
 		}
 	}
-	if(state == Game && paused){
+	if(state == Game && paused){ // keyboard control when on paused screen
 		if(key == 'r'){
 			paused = 0;
-			iResumeTimer(0);
+			iResumeTimer(0); //resuming the game
 			countdown = 3;
 		}
 		if(key == 'e'){
-			SaveGame();
-			saved_data = fopen("gamedata.bin","rb");
-			fread(&saved_game_available,sizeof(bool),1,saved_data);
-			state = MainMenu;
+			if(!multiplayer){
+				SaveGame();    //saving gamedata before exiting
+				saved_data = fopen("gamedata.bin","rb");
+				fread(&saved_game_available,sizeof(bool),1,saved_data);
+			}
+			state = MainMenu;  // going to main menu
 			iLoadImage(&ButtonHighligter,"assets/Buttons/HoverBar.png");
+		}
+	}
+
+	if(multiplayer && player.life>0){
+		if(key == 'w')p1_thrust_toggle^=1;
+		if(key == 'd')turn_p1 = -1;
+		if(key == 'a')turn_p1 = 1;
+		if(key == ' ')if(reloadTime_p1<=0)fire(&player);
+	}
+	if(multiplayer){
+		if(key == 27){
+			paused = 1;
+			iPauseTimer(0);
 		}
 	}
 
@@ -283,13 +337,12 @@ void iKeyboard(unsigned char key) {
 #ifdef DEV_MODE
 	if(key == 'x'){
 		player.life = 0;
-		printf("Player %g %g\n",player.position.x,player.position.y);
-		printf("Camera %g %g\n",camera_offset.x,camera_offset.y);
 	}
 #endif
 	
 
 }
+
 
 /*
 	function iSpecialKeyboard() is called whenver user hits special keys like-
@@ -302,10 +355,14 @@ void iKeyboard(unsigned char key) {
 	*/
 void iSpecialKeyboard(unsigned char key) {
 
-	if (key == GLUT_KEY_END) {
-		exit(0);
-	}
 
+	if(multiplayer && player2.life>0){
+		if(key == GLUT_KEY_UP)p2_thrust_toggle ^= 1;
+		if(key == GLUT_KEY_LEFT)turn_p2 = 1;
+		if(key == GLUT_KEY_RIGHT)turn_p2 = -1;
+		if(key == GLUT_KEY_END)if(reloadTime_p2<=0)fire(&player2);
+
+	}
 
 	//place your codes for other keys here
 }
@@ -313,7 +370,7 @@ void iSpecialKeyboard(unsigned char key) {
 
 int main() {
 	srand(time(0));
-	start();
+	start(Game);
 	Load_resources();
 	state = MainMenu;
 	game_clock = iSetTimer(dt*1000,update_gameplay);
@@ -328,7 +385,7 @@ int main() {
 
 
 
-void inititalize_gameObjects(gameObject *object, char filename[]){
+void initializeGameobject(gameObject *object, char filename[]){
 	FILE *gameData;
 	gameData = fopen(filename,"r");
 	
@@ -369,7 +426,6 @@ void inititalize_gameObjects(gameObject *object, char filename[]){
 
 void Draw_gameObject(object_properties object){
 
-
 	for(int i = 0; i<object.object.number_of_polygons; i++){
 
 		double X[object.object.size[i]];
@@ -408,16 +464,26 @@ void Draw_gameObject(object_properties object){
 void Draw_flare(){
 	iSetColor(18, 206, 219);
 	for(int i = 0; i<total_particle; i++){
-		if(flare[i].life>0.00001) iFilledCircle(player.position.x-flare[i].position*cos(player.angle)-camera_offset.x,player.position.y-flare[i].position*sin(player.angle)-camera_offset.y,((rand()%1000)/100.0f)*(flare[i].life/particle_life)*player.scale);
+		if(flare[i].life>0.00001) iFilledCircle(flare[i].spaceship->position.x-flare[i].position*cos(flare[i].spaceship->angle)-camera_offset.x,flare[i].spaceship->position.y-flare[i].position*sin(flare[i].spaceship->angle)-camera_offset.y,((rand()%1000)/100.0f)*(flare[i].life/particle_life)*flare[i].spaceship->scale);
 	}
 }
 
 void Draw_bullet(bullet bulletss[]){
-	iSetColor(129, 244, 252);
+	iSetColor(200, 233, 239);
 	for(int i = 0; i<max_bullet; i++){
 		if(bulletss[i].active){
 			//iFilledCircle(bulletss[i].position.x-camera_offset.x,bulletss[i].position.y-camera_offset.y,5);
-			iLine(bulletss[i].position.x-camera_offset.x,bulletss[i].position.y-camera_offset.y,bulletss[i].position.x-camera_offset.x+0.003*bulletss[i].velocity.x,bulletss[i].position.y-camera_offset.y+0.003*bulletss[i].velocity.y);
+			
+			double angle = atan2(bulletss[i].velocity.y,bulletss[i].velocity.x);
+			double x[4],y[4];
+			for(int j = 0; j<4; j++){
+				double r = sqrt(bullet_obj.x[0][j]*bullet_obj.x[0][j]+bullet_obj.y[0][j]*bullet_obj.y[0][j]);
+				double theta = atan2(bullet_obj.y[0][j],bullet_obj.x[0][j]);
+				x[j] = r*cos(theta+angle)+bulletss[i].position.x-camera_offset.x;
+				y[j] = r*sin(theta+angle)+bulletss[i].position.y-camera_offset.y;
+
+			}
+			iFilledPolygon(x,y,4);
 		}
 	}
 }
@@ -441,12 +507,23 @@ void Draw_MainGame(){
 	if(!gameover)Draw_flare();
 	Draw_bullet(bullets);
 	Draw_bullet(enemy_bullets);
-	if(!gameover)Draw_gameObject(player);
+
+	if(player.life>0)Draw_gameObject(player);
+	if(multiplayer && player2.life>0)Draw_gameObject(player2);
+
+
 	for(int i = 0; i<active_enemy; i++){
 		Draw_gameObject(enemy_porperties[i]);
 	}
 	draw_enemy_health_bar();
+
 	draw_explosion();
+
+	if(multiplayer){
+		if(!p1_Dead)iText(player.position.x-camera_offset.x-20,player.position.y+50-camera_offset.y,"Player 1",GLUT_BITMAP_8_BY_13);
+		if(!p2_Dead)iText(player2.position.x-camera_offset.x-20,player2.position.y+50-camera_offset.y,"Player 2",GLUT_BITMAP_8_BY_13);
+	}
+
 
 	#ifdef DEBUG
 	char text[50];
@@ -458,17 +535,46 @@ void Draw_MainGame(){
 	}
 	#endif // DEBUG
 
+	//Game Health bar and texts
 	char string[50];
-	sprintf(string, "Health :%g",player.life);
-	iText(1000,670,string,GLUT_BITMAP_8_BY_13);
-	iSetColor(2, 145, 227);
-	iFilledRectangle(1000,650,220*player.life/100,8);
-	iSetColor(255,255,255);
-	iRectangle(1000,650,220,8);
-	sprintf(string,"Wave: %d",wave);
-	iText(600,650,string,GLUT_BITMAP_9_BY_15);
-	sprintf(string,"Score: %d",total_score);
-	iText(50,650,string,GLUT_BITMAP_9_BY_15);
+	if(multiplayer){
+		sprintf(string,"Wave: %d",wave);
+		iText(600,650,string,GLUT_BITMAP_9_BY_15);
+		//player2
+		iText(1000,670,"Player 2",GLUT_BITMAP_TIMES_ROMAN_24);
+		sprintf(string, "Health :%g",player2.life);
+		iText(1000,630,string,GLUT_BITMAP_8_BY_13);
+		iSetColor(2, 145, 227);
+		iFilledRectangle(1000,610,220*player2.life/100,8);
+		iSetColor(255,255,255);
+		iRectangle(1000,610,220,8);
+		sprintf(string,"Score: %d",total_score_p2);
+		iText(1000,570,string,GLUT_BITMAP_9_BY_15);
+		//player1
+		iText(50,670,"Player 1",GLUT_BITMAP_TIMES_ROMAN_24);
+		sprintf(string, "Health :%g",player.life);
+		iText(50,630,string,GLUT_BITMAP_8_BY_13);
+		iSetColor(2, 145, 227);
+		iFilledRectangle(50,610,220*player.life/100,8);
+		iSetColor(255,255,255);
+		iRectangle(50,610,220,8);
+		sprintf(string,"Score: %d",total_score);
+		iText(50,570,string,GLUT_BITMAP_9_BY_15);
+	}
+	else{
+		sprintf(string, "Health :%g",player.life);
+		iText(1000,670,string,GLUT_BITMAP_8_BY_13);
+		iSetColor(2, 145, 227);
+		iFilledRectangle(1000,650,220*player.life/100,8);
+		iSetColor(255,255,255);
+		iRectangle(1000,650,220,8);
+		sprintf(string,"Wave: %d",wave);
+		iText(600,650,string,GLUT_BITMAP_9_BY_15);
+		sprintf(string,"Score: %d",total_score);
+		iText(50,650,string,GLUT_BITMAP_9_BY_15);
+	}
+
+
 
 
 	if(messageTimer>0 && countdown<=0 && !gameover){
@@ -478,9 +584,7 @@ void Draw_MainGame(){
 
 	if(countdown>0){
 		char count[2];
-		sprintf(count,"%d",(int)ceil(countdown));
-		iText(630,500,count,GLUT_BITMAP_TIMES_ROMAN_24);
-
+		iShowImage2(610,500,&count_digit[(int)ceil(countdown)-1],0);
 	}
 
 
@@ -488,10 +592,33 @@ void Draw_MainGame(){
 		//iText(610,360,"GAME OVER!",GLUT_BITMAP_TIMES_ROMAN_24);
 		iShowImage2(400,460,&GameOverText,0);
 		char scoretext[50];
-		sprintf(scoretext,"Total Score: %d",total_score);
-		iText(400,300,scoretext,GLUT_BITMAP_9_BY_15);
-		sprintf(scoretext,"High Score: %d",99999);
-		iText(680,300,scoretext,GLUT_BITMAP_9_BY_15);
+		if(!multiplayer){
+			sprintf(scoretext,"Total Score: %d",total_score);
+			iText(400,300,scoretext,GLUT_BITMAP_9_BY_15);
+			sprintf(scoretext,"High Score: %d",high_score);
+			iText(680,300,scoretext,GLUT_BITMAP_9_BY_15);
+		}
+		else{
+			iText(400,360,"Player 1",GLUT_BITMAP_TIMES_ROMAN_24);
+			sprintf(scoretext,"Enemy Killed : %d",kill_count);
+			iText(400,300,scoretext,GLUT_BITMAP_9_BY_15);
+			sprintf(scoretext,"Asteroids destroyed : %d",destroy_count);
+			iText(400,260,scoretext,GLUT_BITMAP_9_BY_15);
+			sprintf(scoretext,"Total Score: %d",total_score);
+			iText(400,220,scoretext,GLUT_BITMAP_9_BY_15);
+
+			iText(680,360,"Player 2",GLUT_BITMAP_TIMES_ROMAN_24);
+			sprintf(scoretext,"Enemy Killed : %d",kill_count_p2);
+			iText(680,300,scoretext,GLUT_BITMAP_9_BY_15);
+			sprintf(scoretext,"Asteroids destroyed : %d",destroy_count_p2);
+			iText(680,260,scoretext,GLUT_BITMAP_9_BY_15);
+			sprintf(scoretext,"Total Score: %d",total_score_p2);
+			iText(680,220,scoretext,GLUT_BITMAP_9_BY_15);
+
+			if(total_score > total_score_p2)iText(500,150,"Player 1 is the winner !",GLUT_BITMAP_TIMES_ROMAN_24);
+			else if(total_score < total_score_p2)iText(500,150,"Player 2 is the winner !",GLUT_BITMAP_TIMES_ROMAN_24);
+			else iText(600,150,"Draw !",GLUT_BITMAP_TIMES_ROMAN_24);
+		}
 		iText(50,50,"Try Again",GLUT_BITMAP_TIMES_ROMAN_24);
 		iText(1080,50,"Main Menu",GLUT_BITMAP_TIMES_ROMAN_24);
 
@@ -531,20 +658,51 @@ void Draw_mainMenu(){
 
 }
 
-void start(){
-	player.position.x = 0;
-	player.position.y = 0;
-	player.velocity.x = 0;
-	player.velocity.y = 0;
-	player.object = spaceship;
-	player.scale = 0.7;
-	player.life = 100;
+void start(int mode){
+	if(mode == multiplayer_mode){
+		player.position = player1_initital_pos;
+		player.velocity = {0,0};
+		player.object = spaceship;
+		player.scale = 0.7;
+		player.life = 100;
+
+		player2.position = player2_inititial_pos;
+		player2.velocity = {0,0};
+		player2.object = spaceship;
+		player2.scale = 0.7;
+		player2.life = 100;
+
+		total_score_p2 = 0;
+		destroy_count_p2 = 0;
+		kill_count_p2 = 0;
+		p1_Dead = 0;
+		p2_Dead = 0;
+
+		camera_offset.x = (player.position.x+player2.position.x)/2*cam_factor_x-640;
+		camera_offset.y = (player.position.y+player2.position.y)/2*cam_factor_y-360;
+	}
+	else{
+		player.position.x = 0;
+		player.position.y = 0;
+		player.velocity.x = 0;
+		player.velocity.y = 0;
+		player.object = spaceship;
+		player.scale = 0.7;
+		player.life = 100;
+
+		camera_offset.x = player.position.x*cam_factor_x-640;
+		camera_offset.y = player.position.y*cam_factor_y-360;
+		multiplayer = 0;
+
+		High_score_Data = fopen("HighScore.bin","rb");
+		fread(&high_score,sizeof(int),1,High_score_Data);
+		fclose(High_score_Data);
+	}
+
+	
 
 	cam_factor_x = (world_limit_x/2-640.0)/(world_limit_x/2);
 	cam_factor_y = (world_limit_y/2-320.0)/(world_limit_y/2);
-
-	camera_offset.x = player.position.x*cam_factor_x-640;
-	camera_offset.y = player.position.y*cam_factor_y-360;
 
 	//setting random postion of the stars
 	for(int i = 0; i<num_of_stars/2; i++){
@@ -570,20 +728,56 @@ void start(){
 	kill_count = 0;
 	msg = 0;
 	active_exp_particle = 0;
+	messageTimer = 0;
 	for(int i = 0; i<max_bullet; i++){
 		bullets[i].active = 0;
 		enemy_bullets[i].active = 0;
 	}
 
+	for(int i = 0; i<total_particle; i++){
+		flare[i].life = 0;
+	}
+	p1_thrust_toggle = p2_thrust_toggle = 0;
 	active_enemy = 0;
-
-
 }
 
 void update_gameplay(){
 
 	//updating explostion particles
-	
+
+	if(playing && clock()-startTime>700){
+		playing = 0;
+	}
+
+	if(multiplayer){
+		if(player.life>0){
+			if(p1_thrust_toggle)thrust(&player);
+			if(turn_p1>0){
+				player.angle += turn_p1/1*0.07;
+				turn_p1 -= dt*10;
+				if(turn_p1<0)turn_p1 = 0;
+			}
+			if(turn_p1<0){
+				player.angle += turn_p1/1*0.07;
+				turn_p1 += dt*10;
+				if(turn_p1>0)turn_p1 = 0;
+			}
+		}
+		if(player2.life>=0){
+			if(p2_thrust_toggle)thrust(&player2);
+			if(turn_p2>0){
+				player2.angle += turn_p2/1*0.07;
+				turn_p2 -= dt*10;
+				if(turn_p2<0)turn_p2 = 0;
+			}
+			if(turn_p2<0){
+				player2.angle += turn_p2/1*0.07;
+				turn_p2 += dt*10;
+				if(turn_p2>0)turn_p2 = 0;
+			}
+		}
+	}
+
 	for(int i = 0; i<active_exp_particle; i++){
 		explosion[i].life -= dt;
 		if(explosion[i].life<=0){
@@ -594,7 +788,6 @@ void update_gameplay(){
 
 		explosion[i].velocity.x /= 1.01;
 		explosion[i].velocity.y /= 1.01;
-
 	}
 
 	if(countdown>0){
@@ -604,42 +797,15 @@ void update_gameplay(){
 
 	if(gameover){
 		player.life = 0;
+		player2.life = 0;
 		return;
 	}
 	// updating the position of the camera
-	camera_offset.x = player.position.x*cam_factor_x-640;
-	camera_offset.y = player.position.y*cam_factor_y-360;
+	camera_offset.x = (multiplayer?(player.position.x+player2.position.x)/2:player.position.x)*cam_factor_x-640;
+	camera_offset.y = (multiplayer?(player.position.y+player2.position.y)/2:player.position.y)*cam_factor_y-360;
 
-	//updating the position of the player
-	player.position.x += player.velocity.x*dt;
-	player.position.y += player.velocity.y*dt;
-
-	// limiting spaceship movement within world limit
-	if(player.position.x-camera_offset.x<0){
-		player.position.x = camera_offset.x+20;
-		player.velocity.x += 500;
-	}
-	if(player.position.x-camera_offset.x>1280){
-		player.position.x = camera_offset.x+1275;
-		player.velocity.x -= 500;
-	}
-	if(player.position.y-camera_offset.y<0){
-		player.position.y = camera_offset.y+10;
-		player.velocity.y += 500;
-	}
-	if(player.position.y-camera_offset.y>720){
-		player.position.y = camera_offset.y+715;
-		player.velocity.y -= 500;
-	}
-
-	//adding friction
-	double velocity_magnitude = sqrt(player.velocity.x*player.velocity.x+player.velocity.y*player.velocity.y);
-	if(abs(player.velocity.x)>0){
-		player.velocity.x -= player.velocity.x/velocity_magnitude*friction*dt;
-	}
-	if(abs(player.velocity.y)>0){
-		player.velocity.y -= player.velocity.y/velocity_magnitude*friction*dt;
-	}
+	player_movement(&player);
+	if(multiplayer)player_movement(&player2);
 
 	//updating flare particles
 	int active = 0;
@@ -651,11 +817,6 @@ void update_gameplay(){
 			active++;
 		}
 	}
-
-
-	//	printf("Active: %d\t",active);
-
-
 	//updating bullets
 	active = 0;
 	for(int i = 0; i<max_bullet; i++){
@@ -666,7 +827,6 @@ void update_gameplay(){
 			if(bullets[i].position.x-camera_offset.x<0|| bullets[i].position.x-camera_offset.x>1280 || bullets[i].position.y-camera_offset.y<0||bullets[i].position.y-camera_offset.y>720){
 				bullets[i].active = 0;
 			}
-
 		}
 	}
 	//updating enemy bullets
@@ -678,7 +838,6 @@ void update_gameplay(){
 			if(enemy_bullets[i].position.x-camera_offset.x<0|| enemy_bullets[i].position.x-camera_offset.x>1280 || enemy_bullets[i].position.y-camera_offset.y<0||enemy_bullets[i].position.y-camera_offset.y>720){
 				enemy_bullets[i].active = 0;
 			}
-
 		}
 	}
 
@@ -698,41 +857,10 @@ void update_gameplay(){
 		asteroids_properties[i].position.y+=asteroids_properties[i].velocity.y*dt;
 		
 	}
-	//printf("%d\n",active_ateroids);
 
 
-	// asteroid player collision
-	for(int i = 0; i<active_ateroids; i++){
-		if(isColliding(player,asteroids_properties[i])){
-			//iPauseTimer(0);
-			player.life -= 10*asteroids_properties[i].scale;
-			explode(asteroids_properties[i].position,{0,0},0);
-			Destroy_asteroid(i);
-			
-		}
-	}
-
-	// player enemy collision
-	for(int i = 0; i<active_enemy; i++){
-		if(isColliding(player,enemy_porperties[i])){
-			if(actv_pl_en_col){
-				player.life -= 15;
-				actv_pl_en_col = 0;
-			}
-			destroy_enemy(i);
-		}
-		else actv_pl_en_col = 1;
-	}
-
-	//player enemy_bullet collision
-	for(int i = 0; i < max_bullet; i++){
-		if(!enemy_bullets[i].active)continue;
-		if(distance(player.position,enemy_bullets[i].position)<player.object.collider_radius){
-			player.life -= 5;
-			explode(enemy_bullets[i].position,{0,0},1);
-			enemy_bullets[i].active = 0;
-		}
-	}
+	if(player.life>0)player_collision(&player);
+	if(multiplayer && player2.life>0)player_collision(&player2);
 
 	// asteroids+enemy bullet collision
 	for(int i = 0; i<20; i++){
@@ -752,7 +880,8 @@ void update_gameplay(){
 				Destroy_asteroid(j);
 				explode(bullets[i].position,{0,0},1);
 				bullets[i].active = 0;
-				destroy_count++;
+				if(bullets[i].player == 0) destroy_count++;
+				else destroy_count_p2++;
 				
 			}
 		}
@@ -762,16 +891,19 @@ void update_gameplay(){
 				enemy_porperties[j].life -= 20;
 				bullets[j].active = 0;
 				explode(bullets[i].position,{0,0},1);
-				total_score+=50;
+				if(bullets[i].player == 0)total_score+=50;
+				else total_score_p2+=50;
 			}
 			if(enemy_porperties[j].life <= 0){
 				destroy_enemy(j);
-				kill_count++;
+				if(bullets[i].player == 0) kill_count++;
+				else kill_count_p2++;
 			}
 		}
 	}
 
 	total_score = kill_count*200+destroy_count*150;
+	total_score_p2 = kill_count_p2*200+destroy_count_p2*150;
 	ControlEnemy();
 	enemy_attack();
 
@@ -782,21 +914,55 @@ void update_gameplay(){
 	}
 	if(messageTimer>0)messageTimer -= dt;
 
-	if(player.life<=0){
-		gameover = 1;
-		iResizeImage(&ButtonHighligter,140,45);
-		explode(player.position,player.velocity,0);
-		paused = 1;
+	if(multiplayer){
+		if(player.life<=0 && !p1_Dead){
+			explode(player.position,player.velocity,0);
+			player.life = 0;
+			p1_Dead = 1;
+		}
+		if(player2.life<=0 && !p2_Dead){
+			explode(player2.position,player2.velocity,0);
+			player2.life = 0;
+			p2_Dead = 1;
+			p2_thrust_toggle = 0;
+		}
+		if(player.life<=0 && player2.life <= 0){
+			gameover = 1;
+			iResizeImage(&ButtonHighligter,140,45);
+			paused = 1;
+			p1_thrust_toggle = 0;
+		}
+	}
+	else{
+		if(player.life<=0){
+			gameover = 1;
+			iResizeImage(&ButtonHighligter,140,45);
+			explode(player.position,player.velocity,0);
+			paused = 1;
+			player.life = -0.001;
+			if(total_score>high_score){
+				high_score = total_score;
+				High_score_Data = fopen("highscore.bin","wb");
+				fwrite(&high_score,sizeof(int),1,High_score_Data);
+				fclose(High_score_Data);
+			}
+		}
 
+	}
+	if(reloadTime_p1>0){
+		reloadTime_p1-=dt;
+	}
+	if(reloadTime_p2>0){
+		reloadTime_p2-=dt;
 	}
 
 }
 
-void thrust(){
-	double velocity_magnitude = sqrt(player.velocity.x*player.velocity.x+player.velocity.y*player.velocity.y);
+void thrust(object_properties *player){
+	double velocity_magnitude = sqrt(player->velocity.x*player->velocity.x+player->velocity.y*player->velocity.y);
 	if(velocity_magnitude<max_velocity){
-		player.velocity.x = player.velocity.x + acceleration*cos(player.angle)*dt;
-		player.velocity.y = player.velocity.y + acceleration*sin(player.angle)*dt;
+		player->velocity.x = player->velocity.x + acceleration*cos(player->angle)*dt;
+		player->velocity.y = player->velocity.y + acceleration*sin(player->angle)*dt;
 	}
 	
 	int cnt = 0;
@@ -805,7 +971,8 @@ void thrust(){
 			cnt++;
 			flare[i].life = particle_life;
 			flare[i].velocity = rand()%1000;
-			flare[i].position = particle_initial_pos*player.scale;
+			flare[i].position = particle_initial_pos*player->scale;
+			flare[i].spaceship = player;
 		}       
 
 		if(cnt>flare_intensity)break;
@@ -814,18 +981,21 @@ void thrust(){
 
 
 
-void fire(){
-
+void fire(object_properties *player){
 	for(int i = 0; i<max_bullet; i++){
 		if(!bullets[i].active){
-			bullets[i].position = player.position;
-			bullets[i].velocity.x = bullet_velocity*cos(player.angle);
-			bullets[i].velocity.y = bullet_velocity*sin(player.angle);
+			bullets[i].position.x = player->position.x+60*cos(player->angle);
+			bullets[i].position.y = player->position.y+60*sin(player->angle);
+			bullets[i].velocity.x = bullet_velocity*cos(player->angle);
+			bullets[i].velocity.y = bullet_velocity*sin(player->angle);
 			bullets[i].active = 1;
+			bullets[i].player = (player == &player2); //who fired it
 			break;
 		}
-
 	}
+	if(player == &player2)reloadTime_p2 = player_rt;
+	else reloadTime_p1 = player_rt;
+	if(!playing)PlaySound(TEXT("assets/fire.wav"),NULL,SND_ASYNC);
 }
 
 //Generates asteroids automatically on the edge of the game world when active asteroid count is less than max count
@@ -987,12 +1157,17 @@ double distance(vector2 a, vector2 b){
 }
 void enemy_attack(){
 	for(int i = 0; i<active_enemy; i++){
+		if(distance(enemy_porperties[i].position,camera_offset)>1000)continue;
 		if(enemy_reload_time[i]>0.00001){
 			enemy_reload_time[i] -= 5;
 			continue;
 		}
 
 		double enemy_player_angle = atan2(player.position.y-enemy_porperties[i].position.y,player.position.x-enemy_porperties[i].position.x);
+
+		if(p1_Dead || (!p2_Dead && multiplayer && distance(enemy_porperties[i].position,player.position)>distance(enemy_porperties[i].position,player2.position))){
+			enemy_player_angle = atan2(player2.position.y-enemy_porperties[i].position.y,player2.position.x-enemy_porperties[i].position.x);
+		}
 
 		for(int j = 0; j<max_bullet; j++){
 			if(enemy_bullets[j].active)continue;
@@ -1001,6 +1176,7 @@ void enemy_attack(){
 			enemy_bullets[j].velocity.y = bullet_velocity*sin(enemy_player_angle);
 			enemy_bullets[j].active = 1;
 			enemy_reload_time[i] = reload_time;
+			if(!playing)PlaySound(TEXT("assets/fire.wav"),NULL,SND_ASYNC);
 			break;
 		}
 	}
@@ -1048,6 +1224,16 @@ void explode(vector2 pos,vector2 velocity,bool collision){
 		explosion[active_exp_particle].life = 0.2;
 		active_exp_particle++;
 	}
+	PlaySound(0,0,0);
+	if(!collision){
+		PlaySound(TEXT("assets/explode.wav"),NULL, SND_ASYNC );
+		playing = 1;
+		startTime = clock();
+	}
+	else{
+		PlaySound(TEXT("assets/exp2.wav"),NULL, SND_ASYNC );
+	}
+
 }
 
 
@@ -1067,17 +1253,17 @@ void draw_pause_screen(){
 }
 
 void Load_resources(){
-	inititalize_gameObjects(&spaceship,"assets/spaceship.txt");
-	inititalize_gameObjects(&asteroids[0],"assets/asteroid1.txt");
-	inititalize_gameObjects(&asteroids[1],"assets/asteroid2.txt");
-	inititalize_gameObjects(&asteroids[2],"assets/asteroid3.txt");
+	initializeGameobject(&spaceship,"assets/spaceship.txt");
+	initializeGameobject(&asteroids[0],"assets/asteroid1.txt");
+	initializeGameobject(&asteroids[1],"assets/asteroid2.txt");
+	initializeGameobject(&asteroids[2],"assets/asteroid3.txt");
+	initializeGameobject(&bullet_obj,"assets/bullet.txt");
 
 
 //Testing enemy sprite
-	inititalize_gameObjects(&enemy[0],"assets/enemy1.txt");
-	inititalize_gameObjects(&enemy[1],"assets/enemy1.txt");
-	inititalize_gameObjects(&enemy[2],"assets/enemy1.txt");
-	inititalize_gameObjects(&enemy[3],"assets/enemy1.txt");
+	initializeGameobject(&enemy[0],"assets/Enemy1.txt");
+	initializeGameobject(&enemy[1],"assets/Enemy2.txt");
+	initializeGameobject(&enemy[2],"assets/Enemy3.txt");
 
 	iLoadImage(&MainMenuBG,"assets/bg2.png");
 	iResizeImage(&MainMenuBG,1280,720);
@@ -1091,6 +1277,9 @@ void Load_resources(){
 	iLoadImage(&ButtonHighligter,"assets/Buttons/HoverBar.png");
 	iLoadImage(&GameOverText,"assets/GameOverText.png");
 	iLoadImage(&PausedText,"assets/PausedText.png");
+	iLoadImage(&count_digit[0],"assets/1.png");
+	iLoadImage(&count_digit[1],"assets/2.png");
+	iLoadImage(&count_digit[2],"assets/3.png");
 
 
 
@@ -1148,6 +1337,7 @@ void SaveGame(){
 	fwrite(stars_pos1,sizeof(vector2),num_of_stars/2,saved_data);
 	fwrite(stars_pos2,sizeof(vector2),num_of_stars/2,saved_data);
 	fwrite(&camera_offset,sizeof(vector2),1,saved_data);
+	fclose(saved_data);
 
 }
 void LoadGame(){
@@ -1193,9 +1383,80 @@ void LoadGame(){
 	for(int i = 0; i<active_ateroids; i++){
 		asteroids_properties[i].object = asteroids[rand()%3];
 	}
+	fclose(saved_data);
+
+}
+void player_movement(object_properties *player){
+
+	//updating the position of the player
+	player->position.x += player->velocity.x*dt;
+	player->position.y += player->velocity.y*dt;
+
+
+	// limiting spaceship movement within world limit
+	if(player->position.x-camera_offset.x<0){
+		player->position.x = camera_offset.x+20;
+		player->velocity.x += 500;
+	}
+	if(player->position.x-camera_offset.x>1280){
+		player->position.x = camera_offset.x+1275;
+		player->velocity.x -= 500;
+	}
+	if(player->position.y-camera_offset.y<0){
+		player->position.y = camera_offset.y+10;
+		player->velocity.y += 500;
+	}
+	if(player->position.y-camera_offset.y>720){
+		player->position.y = camera_offset.y+715;
+		player->velocity.y -= 500;
+	}
+
+	//adding friction
+	double velocity_magnitude = sqrt(player->velocity.x*player->velocity.x+player->velocity.y*player->velocity.y);
+	if(abs(player->velocity.x)>0){
+		player->velocity.x -= player->velocity.x/velocity_magnitude*friction*dt;
+	}
+	if(abs(player->velocity.y)>0){
+		player->velocity.y -= player->velocity.y/velocity_magnitude*friction*dt;
+	}
 
 }
 
+void player_collision(object_properties *player){
+		// asteroid player collision
+	for(int i = 0; i<active_ateroids; i++){
+		if(isColliding(*player,asteroids_properties[i])){
+			//iPauseTimer(0);
+			player->life -= 10*asteroids_properties[i].scale;
+			explode(asteroids_properties[i].position,{0,0},0);
+			Destroy_asteroid(i);
+			
+		}
+	}
+
+	// player enemy collision
+	for(int i = 0; i<active_enemy; i++){
+		if(isColliding(*player,enemy_porperties[i])){
+			if(actv_pl_en_col){
+				player->life -= 15;
+				actv_pl_en_col = 0;
+			}
+			destroy_enemy(i);
+		}
+		else actv_pl_en_col = 1;
+	}
+
+	//player enemy_bullet collision
+	for(int i = 0; i < max_bullet; i++){
+		if(!enemy_bullets[i].active)continue;
+		if(distance(player->position,enemy_bullets[i].position)<player->object.collider_radius){
+			player->life -= 5;
+			explode(enemy_bullets[i].position,{0,0},1);
+			enemy_bullets[i].active = 0;
+		}
+	}
+
+}
 void update_UI(){
 
 }

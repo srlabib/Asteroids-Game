@@ -25,6 +25,7 @@ struct object_properties{
 };
 
 struct thrust_particle{
+	object_properties *spaceship;
 	double position;
 	double velocity;
 	double life = 0;
@@ -42,6 +43,7 @@ struct bullet{
 	vector2 position;
 	vector2 velocity;
 	bool active = 0;
+	bool player;   //who fired the bullet.. player1/player2 in multiplayer
 };
 
 
@@ -50,11 +52,11 @@ enum side{
 };
 
 enum page{
-	MainMenu,HighScore,EnterName,GameOver,credit,Game
+	MainMenu,HighScore,EnterName,GameOver,credit,Game,multiplayer_mode
 };
 
 enum button {
-	startgame,continuegame,multiplayer,exitt
+	startgame,continuegame,Multi_player,exitt
 };
 
 char message[13][20] = {

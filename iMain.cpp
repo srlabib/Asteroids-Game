@@ -28,6 +28,9 @@ int buttonHeight = 80, buttonWidth = 375;
 Image ButtonImage[5];
 Image ButtonHighligter;
 vector2 ButtonHighlighterpos = {-1,-1};
+Image choose_screen_multi;
+Image choose_screen_single;
+Image TextBox;
 bool paused = 0;
 
 //UI
@@ -37,7 +40,7 @@ Image count_digit[3];
 
 double countdown = 0;
 //spaceship properties
-gameObject spaceship;
+gameObject spaceship[3];
 object_properties player,player2;
 const double dt = 0.005;
 const double acceleration = 20000;
@@ -107,6 +110,10 @@ bool p2_thrust_toggle = 0;
 double turn_p1 = 0,turn_p2 = 0;
 bool p1_Dead = 0,p2_Dead = 0;
 
+char name_p1[30],name_p2[30];
+int editing = -1,in1,in2;
+int spaceship_in1,spaceship_in2;
+
 
 
 int active_ateroids = 0;
@@ -154,6 +161,8 @@ void SaveGame();
 void LoadGame();
 void player_movement(object_properties *player);
 void player_collision(object_properties *player);
+void Draw_chooseScreen();
+
 int isFileEmpty(FILE *file) {
     fseek(file, 0, SEEK_END); // Move to the end of the file
     long size = ftell(file); // Get the position (size in bytes)
@@ -170,6 +179,9 @@ void iDraw() {
 	}
 	if(state == Game){
 		Draw_MainGame();
+	}
+	if(state == choose){
+		Draw_chooseScreen();
 	}
 	
 }
@@ -219,9 +231,7 @@ void iPassiveMouseMove(int mx, int my){
 	(mx, my) is the position where the mouse pointer is.
 	*/
 void iMouse(int button, int stat, int mx, int my) {
-	if (button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN) {
 
-	}
 	if(!multiplayer && state == Game && !paused && countdown<=0){
 		if (button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN) {
 			if(reloadTime_p1<=0) fire(&player); //firing of left mouse click
@@ -237,6 +247,7 @@ void iMouse(int button, int stat, int mx, int my) {
 		}
 		if(ButtonHighlighterpos.x == 1070 && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
 			state = MainMenu;  //going to main menu clicking on main menu button
+			PlaySound(TEXT("assets/Sound/bgm.wav"),NULL,SND_ASYNC | SND_LOOP);
 			iLoadImage(&ButtonHighligter,"assets/Buttons/HoverBar.png");
 			if(!multiplayer){
 				saved_data = fopen("gamedata.bin","wb");
@@ -252,10 +263,15 @@ void iMouse(int button, int stat, int mx, int my) {
 	}
 	if(state == MainMenu){  //mouse control when on the mainmenu
 		if(ButtonHighlighterpos.y == buttons[startgame].y && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
-			start(Game);
-			state = Game;
-			ButtonHighlighterpos = {-1,-1};
-			iResumeTimer(game_clock);
+			state = choose;
+			multiplayer = 0;
+			spaceship_in1 = 0;
+			camera_offset = {0,0};
+			player.position = {635, 508};
+			player.angle = 0;
+			player.object = spaceship[0];
+			player.scale = 0.7;
+
 		}
 		if(saved_game_available && ButtonHighlighterpos.y == buttons[continuegame].y && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
 			LoadGame();
@@ -264,17 +280,28 @@ void iMouse(int button, int stat, int mx, int my) {
 			multiplayer = 0;
 			countdown = 3;
 			state = Game;
+			PlaySound(0,0,0);
 			ButtonHighlighterpos = {-1,-1};
 			iResumeTimer(game_clock);
 		}
 
 		if(ButtonHighlighterpos.y == buttons[Multi_player].y && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
-			start(multiplayer_mode);
-			state = Game;
-			ButtonHighlighterpos = {-1,-1};
-			iResumeTimer(game_clock);
+			state = choose;
+			strcpy(name_p1,"Player 1");
+			strcpy(name_p2,"Player 2");
+			spaceship_in1 = 0;
+			spaceship_in2 = 0;
+			in1 = in2 = 8;
+			camera_offset = {0,0};
+			player.position = {217,357};
+			player2.position = {1061, 367};
+			player.object = spaceship[0];
+			player2.object = spaceship[0];
+			player.angle = 0;
+			player2.angle = 0;
+			player.scale = 0.7;
+			player2.scale = 0.7;
 			multiplayer = 1;
-
 		}
 
 		if(ButtonHighlighterpos.y == buttons[exitt].y && button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN){
@@ -282,7 +309,23 @@ void iMouse(int button, int stat, int mx, int my) {
 		}
 
 	}
+	if(state == choose){
+		if(multiplayer){
+			if(button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN && 81<=mx&&mx<=388&&512<=my&&my<=556)editing = 0;
+			if(button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN && 901<=mx&&mx<=1213&&512<=my&&my<=556)editing = 1;
 
+			if(button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN && 61<=mx&&mx<=112&&342<=my&&my<=396)player.object = spaceship[spaceship_in1 = (spaceship_in1+2)%3];
+			if(button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN && 349<=mx&&mx<=404&&342<=my&&my<=396)player.object = spaceship[spaceship_in1 = (spaceship_in1+1)%3];
+
+			if(button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN && 889<=mx&&mx<=933&&342<=my&&my<=396)player2.object = spaceship[spaceship_in2 = (spaceship_in2+2)%3];
+			if(button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN && 1178<=mx&&mx<=1222&&342<=my&&my<=396)player2.object = spaceship[spaceship_in2 = (spaceship_in2+1)%3];
+		}
+		else{
+			if(button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN && 470<=mx&&mx<=514&&484<=my&&my<=551)player.object = spaceship[spaceship_in1 = (spaceship_in1+2)%3];
+			if(button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN && 766<=mx&&mx<=806&&484<=my&&my<=551)player.object = spaceship[spaceship_in1 = (spaceship_in1+1)%3];
+		}
+	}
+	// if(button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN)printf("%d %d\n",mx,my);
 
 }
 
@@ -315,6 +358,7 @@ void iKeyboard(unsigned char key) {
 				fread(&saved_game_available,sizeof(bool),1,saved_data);
 			}
 			state = MainMenu;  // going to main menu
+			PlaySound(TEXT("assets/Sound/bgm.wav"),NULL,SND_ASYNC | SND_LOOP);
 			iLoadImage(&ButtonHighligter,"assets/Buttons/HoverBar.png");
 		}
 	}
@@ -331,6 +375,38 @@ void iKeyboard(unsigned char key) {
 			iPauseTimer(0);
 		}
 	}
+	if(state == choose){
+		if(key == '\r'){
+			if(multiplayer){
+				start(multiplayer_mode);
+				state = Game;
+				PlaySound(0,0,0);
+				ButtonHighlighterpos = {-1,-1};
+				iResumeTimer(game_clock);
+				multiplayer = 1;
+			}else{
+				start(Game);
+				state = Game;
+				PlaySound(0,0,0);
+				ButtonHighlighterpos = {-1,-1};
+				iResumeTimer(game_clock);
+				}
+		}
+		else if(editing == 0){
+			if(key == '\b' && in1 > 0 )in1--;
+			else if(20<=key&&key<=126&&in1<28) {
+				name_p1[in1++] = key;
+			}
+		}
+		else if(editing == 1){
+			if(key == '\b' && in2 > 0 )in2--;
+			else if(20<=key&&key<=126&&in2<28) {
+				name_p2[in2++] = key;
+			}
+		}
+		name_p1[in1] = '\0';
+		name_p2[in2] = '\0';
+	}
 
 
 
@@ -339,32 +415,19 @@ void iKeyboard(unsigned char key) {
 		player.life = 0;
 	}
 #endif
-	
-
 }
-
-
 /*
-	function iSpecialKeyboard() is called whenver user hits special keys like-
-	function keys, home, end, pg up, pg down, arraows etc. you have to use
-	appropriate constants to detect them. A list is:
-	GLUT_KEY_F1, GLUT_KEY_F2, GLUT_KEY_F3, GLUT_KEY_F4, GLUT_KEY_F5, GLUT_KEY_F6,
-	GLUT_KEY_F7, GLUT_KEY_F8, GLUT_KEY_F9, GLUT_KEY_F10, GLUT_KEY_F11, GLUT_KEY_F12,
-	GLUT_KEY_LEFT, GLUT_KEY_UP, GLUT_KEY_RIGHT, GLUT_KEY_DOWN, GLUT_KEY_PAGE UP,
-	GLUT_KEY_PAGE DOWN, GLUT_KEY_HOME, GLUT_KEY_END, GLUT_KEY_INSERT
-	*/
+	function iSpecialKeyboard() is called whenver user hits special keys like-function keys, home, end, pg up, pg down, arraows etc. you have to useappropriate constants to detect them.
+	A list is:GLUT_KEY_F1, GLUT_KEY_F2, GLUT_KEY_F3, GLUT_KEY_F4, GLUT_KEY_F5, GLUT_KEY_F6,GLUT_KEY_F7, GLUT_KEY_F8, GLUT_KEY_F9, GLUT_KEY_F10, GLUT_KEY_F11, GLUT_KEY_F12,GLUT_KEY_LEFT, GLUT_KEY_UP, GLUT_KEY_RIGHT, GLUT_KEY_DOWN, GLUT_KEY_PAGE UP,GLUT_KEY_PAGE DOWN, GLUT_KEY_HOME, GLUT_KEY_END, GLUT_KEY_INSERT
+*/
 void iSpecialKeyboard(unsigned char key) {
-
-
 	if(multiplayer && player2.life>0){
 		if(key == GLUT_KEY_UP)p2_thrust_toggle ^= 1;
 		if(key == GLUT_KEY_LEFT)turn_p2 = 1;
 		if(key == GLUT_KEY_RIGHT)turn_p2 = -1;
-		if(key == GLUT_KEY_END)if(reloadTime_p2<=0)fire(&player2);
+		if(key == GLUT_KEY_HOME)if(reloadTime_p2<=0)fire(&player2);
 
 	}
-
-	//place your codes for other keys here
 }
 
 
@@ -373,13 +436,12 @@ int main() {
 	start(Game);
 	Load_resources();
 	state = MainMenu;
+	PlaySound(TEXT("assets/Sound/bgm.wav"),NULL,SND_ASYNC | SND_LOOP);
 	game_clock = iSetTimer(dt*1000,update_gameplay);
 	iPauseTimer(game_clock);
 	
-
-	iInitialize(1280, 720, "asteroids Game");
+	iInitialize(1280, 720, "AstroStrike - The space defence");
 	
-
 	return 0;
 }
 
@@ -520,8 +582,8 @@ void Draw_MainGame(){
 	draw_explosion();
 
 	if(multiplayer){
-		if(!p1_Dead)iText(player.position.x-camera_offset.x-20,player.position.y+50-camera_offset.y,"Player 1",GLUT_BITMAP_8_BY_13);
-		if(!p2_Dead)iText(player2.position.x-camera_offset.x-20,player2.position.y+50-camera_offset.y,"Player 2",GLUT_BITMAP_8_BY_13);
+		if(!p1_Dead)iText(player.position.x-camera_offset.x-20,player.position.y+50-camera_offset.y,name_p1,GLUT_BITMAP_8_BY_13);
+		if(!p2_Dead)iText(player2.position.x-camera_offset.x-20,player2.position.y+50-camera_offset.y,name_p2,GLUT_BITMAP_8_BY_13);
 	}
 
 
@@ -541,7 +603,7 @@ void Draw_MainGame(){
 		sprintf(string,"Wave: %d",wave);
 		iText(600,650,string,GLUT_BITMAP_9_BY_15);
 		//player2
-		iText(1000,670,"Player 2",GLUT_BITMAP_TIMES_ROMAN_24);
+		iText(1000,670,name_p2,GLUT_BITMAP_TIMES_ROMAN_24);
 		sprintf(string, "Health :%g",player2.life);
 		iText(1000,630,string,GLUT_BITMAP_8_BY_13);
 		iSetColor(2, 145, 227);
@@ -551,7 +613,7 @@ void Draw_MainGame(){
 		sprintf(string,"Score: %d",total_score_p2);
 		iText(1000,570,string,GLUT_BITMAP_9_BY_15);
 		//player1
-		iText(50,670,"Player 1",GLUT_BITMAP_TIMES_ROMAN_24);
+		iText(50,670,name_p1,GLUT_BITMAP_TIMES_ROMAN_24);
 		sprintf(string, "Health :%g",player.life);
 		iText(50,630,string,GLUT_BITMAP_8_BY_13);
 		iSetColor(2, 145, 227);
@@ -599,7 +661,7 @@ void Draw_MainGame(){
 			iText(680,300,scoretext,GLUT_BITMAP_9_BY_15);
 		}
 		else{
-			iText(400,360,"Player 1",GLUT_BITMAP_TIMES_ROMAN_24);
+			iText(400,360,name_p1,GLUT_BITMAP_TIMES_ROMAN_24);
 			sprintf(scoretext,"Enemy Killed : %d",kill_count);
 			iText(400,300,scoretext,GLUT_BITMAP_9_BY_15);
 			sprintf(scoretext,"Asteroids destroyed : %d",destroy_count);
@@ -607,16 +669,15 @@ void Draw_MainGame(){
 			sprintf(scoretext,"Total Score: %d",total_score);
 			iText(400,220,scoretext,GLUT_BITMAP_9_BY_15);
 
-			iText(680,360,"Player 2",GLUT_BITMAP_TIMES_ROMAN_24);
+			iText(680,360,name_p2,GLUT_BITMAP_TIMES_ROMAN_24);
 			sprintf(scoretext,"Enemy Killed : %d",kill_count_p2);
 			iText(680,300,scoretext,GLUT_BITMAP_9_BY_15);
 			sprintf(scoretext,"Asteroids destroyed : %d",destroy_count_p2);
 			iText(680,260,scoretext,GLUT_BITMAP_9_BY_15);
 			sprintf(scoretext,"Total Score: %d",total_score_p2);
 			iText(680,220,scoretext,GLUT_BITMAP_9_BY_15);
-
-			if(total_score > total_score_p2)iText(500,150,"Player 1 is the winner !",GLUT_BITMAP_TIMES_ROMAN_24);
-			else if(total_score < total_score_p2)iText(500,150,"Player 2 is the winner !",GLUT_BITMAP_TIMES_ROMAN_24);
+			if(total_score > total_score_p2)iText(500,150,(sprintf(scoretext,"%s  is the winner !",name_p1),scoretext),GLUT_BITMAP_TIMES_ROMAN_24);
+			else if(total_score < total_score_p2)iText(500,150,(sprintf(scoretext,"%s  is the winner !",name_p2),scoretext),GLUT_BITMAP_TIMES_ROMAN_24);
 			else iText(600,150,"Draw !",GLUT_BITMAP_TIMES_ROMAN_24);
 		}
 		iText(50,50,"Try Again",GLUT_BITMAP_TIMES_ROMAN_24);
@@ -658,17 +719,36 @@ void Draw_mainMenu(){
 
 }
 
+void Draw_chooseScreen(){
+	if(multiplayer){
+		iShowImage(0,0,&choose_screen_multi);
+		iShowImage2(78,500,&TextBox,0x000000);
+		iShowImage2(906,500,&TextBox,0x000000);
+		iSetColor(255,255,255);
+		iText(93,518,name_p1,GLUT_BITMAP_TIMES_ROMAN_24);
+		iText(922,518,name_p2,GLUT_BITMAP_TIMES_ROMAN_24);
+		
+		Draw_gameObject(player);
+		Draw_gameObject(player2);
+	}else{
+		iShowImage(0,0,&choose_screen_single);
+		iSetColor(255,255,255);
+		iText(93,518,name_p1,GLUT_BITMAP_TIMES_ROMAN_24);
+		Draw_gameObject(player);
+	}
+}
+
 void start(int mode){
 	if(mode == multiplayer_mode){
 		player.position = player1_initital_pos;
 		player.velocity = {0,0};
-		player.object = spaceship;
+		//player.object = spaceship;
 		player.scale = 0.7;
 		player.life = 100;
 
 		player2.position = player2_inititial_pos;
 		player2.velocity = {0,0};
-		player2.object = spaceship;
+		//player2.object = spaceship;
 		player2.scale = 0.7;
 		player2.life = 100;
 
@@ -686,7 +766,6 @@ void start(int mode){
 		player.position.y = 0;
 		player.velocity.x = 0;
 		player.velocity.y = 0;
-		player.object = spaceship;
 		player.scale = 0.7;
 		player.life = 100;
 
@@ -995,7 +1074,7 @@ void fire(object_properties *player){
 	}
 	if(player == &player2)reloadTime_p2 = player_rt;
 	else reloadTime_p1 = player_rt;
-	if(!playing)PlaySound(TEXT("assets/fire.wav"),NULL,SND_ASYNC);
+	if(!playing)PlaySound(TEXT("assets/Sound/fire.wav"),NULL,SND_ASYNC);
 }
 
 //Generates asteroids automatically on the edge of the game world when active asteroid count is less than max count
@@ -1176,7 +1255,7 @@ void enemy_attack(){
 			enemy_bullets[j].velocity.y = bullet_velocity*sin(enemy_player_angle);
 			enemy_bullets[j].active = 1;
 			enemy_reload_time[i] = reload_time;
-			if(!playing)PlaySound(TEXT("assets/fire.wav"),NULL,SND_ASYNC);
+			if(!playing)PlaySound(TEXT("assets/Sound/fire.wav"),NULL,SND_ASYNC);
 			break;
 		}
 	}
@@ -1226,12 +1305,12 @@ void explode(vector2 pos,vector2 velocity,bool collision){
 	}
 	PlaySound(0,0,0);
 	if(!collision){
-		PlaySound(TEXT("assets/explode.wav"),NULL, SND_ASYNC );
+		PlaySound(TEXT("assets/Sound/explode.wav"),NULL, SND_ASYNC );
 		playing = 1;
 		startTime = clock();
 	}
 	else{
-		PlaySound(TEXT("assets/exp2.wav"),NULL, SND_ASYNC );
+		PlaySound(TEXT("assets/Sound/exp2.wav"),NULL, SND_ASYNC );
 	}
 
 }
@@ -1253,21 +1332,24 @@ void draw_pause_screen(){
 }
 
 void Load_resources(){
-	initializeGameobject(&spaceship,"assets/spaceship.txt");
-	initializeGameobject(&asteroids[0],"assets/asteroid1.txt");
-	initializeGameobject(&asteroids[1],"assets/asteroid2.txt");
-	initializeGameobject(&asteroids[2],"assets/asteroid3.txt");
-	initializeGameobject(&bullet_obj,"assets/bullet.txt");
+	initializeGameobject(&asteroids[0],"assets/GameObjects/asteroid1.txt");
+	initializeGameobject(&asteroids[1],"assets/GameObjects/asteroid2.txt");
+	initializeGameobject(&asteroids[2],"assets/GameObjects/asteroid3.txt");
+	initializeGameobject(&bullet_obj,"assets/GameObjects/bullet.txt");
 
 
 //Testing enemy sprite
-	initializeGameobject(&enemy[0],"assets/Enemy1.txt");
-	initializeGameobject(&enemy[1],"assets/Enemy2.txt");
-	initializeGameobject(&enemy[2],"assets/Enemy3.txt");
+	initializeGameobject(&enemy[0],"assets/GameObjects/Enemy1.txt");
+	initializeGameobject(&enemy[1],"assets/GameObjects/Enemy2.txt");
+	initializeGameobject(&enemy[2],"assets/GameObjects/Enemy3.txt");
 
-	iLoadImage(&MainMenuBG,"assets/bg2.png");
+	initializeGameobject(&spaceship[0],"assets/GameObjects/spaceship.txt");
+	initializeGameobject(&spaceship[1],"assets/GameObjects/spaceship2.txt");
+	initializeGameobject(&spaceship[2],"assets/GameObjects/spaceship3.txt");
+
+	iLoadImage(&MainMenuBG,"assets/Background/MainMenu_bg.png");
 	iResizeImage(&MainMenuBG,1280,720);
-	iLoadImage(&GameLogo,"assets/AstroStrike.png");
+	iLoadImage(&GameLogo,"assets/png/AstroStrike.png");
 	iResizeImage(&GameLogo,580,180);
 	iLoadImage(&ButtonImage[0],"assets/Buttons/StartGame.png");
 	iLoadImage(&ButtonImage[1],"assets/Buttons/ContinueGame.png");
@@ -1275,11 +1357,15 @@ void Load_resources(){
 	iLoadImage(&ButtonImage[3],"assets/Buttons/Exit.png");
 	iLoadImage(&ButtonImage[4],"assets/Buttons/x.png");
 	iLoadImage(&ButtonHighligter,"assets/Buttons/HoverBar.png");
-	iLoadImage(&GameOverText,"assets/GameOverText.png");
-	iLoadImage(&PausedText,"assets/PausedText.png");
-	iLoadImage(&count_digit[0],"assets/1.png");
-	iLoadImage(&count_digit[1],"assets/2.png");
-	iLoadImage(&count_digit[2],"assets/3.png");
+	iLoadImage(&GameOverText,"assets/png/GameOverText.png");
+	iLoadImage(&PausedText,"assets/png/PausedText.png");
+	iLoadImage(&count_digit[0],"assets/png/1.png");
+	iLoadImage(&count_digit[1],"assets/png/2.png");
+	iLoadImage(&count_digit[2],"assets/png/3.png");
+	iLoadImage(&TextBox,"assets/png/TextBox.png");
+	iLoadImage(&choose_screen_multi,"assets/Background/ChooseNameMultiplayer.png");
+	iLoadImage(&choose_screen_single,"assets/Background/ChooseSpaceshipScreen.png");
+	
 
 
 
@@ -1337,6 +1423,7 @@ void SaveGame(){
 	fwrite(stars_pos1,sizeof(vector2),num_of_stars/2,saved_data);
 	fwrite(stars_pos2,sizeof(vector2),num_of_stars/2,saved_data);
 	fwrite(&camera_offset,sizeof(vector2),1,saved_data);
+	fwrite(&spaceship_in1,sizeof(int),1,saved_data);
 	fclose(saved_data);
 
 }
@@ -1373,10 +1460,11 @@ void LoadGame(){
 	fread(stars_pos1,sizeof(vector2),num_of_stars/2,saved_data);
 	fread(stars_pos2,sizeof(vector2),num_of_stars/2,saved_data);
 	fread(&camera_offset,sizeof(vector2),1,saved_data);
+	fread(&spaceship_in1,sizeof(int),1,saved_data);
 
 
 
-	player.object = spaceship;
+	player.object = spaceship[spaceship_in1];
 	for(int i = 0; i<active_enemy; i++){
 		enemy_porperties[i].object = enemy[rand()%3];
 	}
@@ -1455,8 +1543,5 @@ void player_collision(object_properties *player){
 			enemy_bullets[i].active = 0;
 		}
 	}
-
-}
-void update_UI(){
 
 }

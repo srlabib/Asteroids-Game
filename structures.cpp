@@ -52,7 +52,7 @@ enum side{
 };
 
 enum page{
-	MainMenu,HighScore,EnterName,GameOver,credit,Game,multiplayer_mode
+	MainMenu,HighScore,EnterName,GameOver,credit,Game,multiplayer_mode,choose
 };
 
 enum button {

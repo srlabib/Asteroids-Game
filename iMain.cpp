@@ -14,7 +14,6 @@ page state;
 int game_clock;  // timer for main game
 int menu_clock;  // timer for menu and others
 clock_t startTime_explosion,saveTime,currTime;
-bool playing_explosion = 0;    //Whether the explosion sound is playing
 
 FILE *saved_data;
 FILE *High_score_Data;
@@ -49,7 +48,7 @@ const double acceleration = 20000;
 const double max_velocity = 1200;
 const double friction = 1500;
 bool actv_pl_en_col = 1;
-const double player_rt = 0.05;//player reload time
+const double player_rt = 0.04;//player reload time
 double reloadTime_p1 = player_rt,reloadTime_p2 = player_rt;
 
 //score
@@ -115,7 +114,8 @@ char name_p1[30],name_p2[30];
 int editing = -1,in1,in2;
 int spaceship_in1,spaceship_in2;
 
-
+int soundcount = 0;
+int max_sound = 50;
 
 int active_ateroids = 0;
 int asteroid_limit = 10;
@@ -129,11 +129,6 @@ double world_limit_y = 1687;
 
 vector2 camera_offset = {0,0};
 double cam_factor_x,cam_factor_y,shake_factor = 0,shakeTime = 500;
-
-//Holds the address of the memory that stores the sounds
-char *explode_sound;
-char *shoot_sound;
-
 
 void initializeGameobject(gameObject *object, char filename[]);
 void Draw_MainGame();
@@ -166,6 +161,8 @@ void player_movement(object_properties *player);
 void player_collision(object_properties *player);
 void Draw_chooseScreen();
 int is_file_empty(FILE *file);
+void playsound(char filename[]);
+
 
 void iDraw() {
 	
@@ -227,7 +224,7 @@ void iMouse(int button, int stat, int mx, int my) {
 
 	if(!multiplayer && state == Game && !paused && countdown<=0){
 		if (button == GLUT_LEFT_BUTTON && stat == GLUT_DOWN) {
-			if(reloadTime_p1<=0) fire(&player); //firing of left mouse click
+			/*if(reloadTime_p1<=0)*/ fire(&player); //firing of left mouse click
 		}
 		if (button == GLUT_RIGHT_BUTTON && stat == GLUT_DOWN) {
 
@@ -276,7 +273,7 @@ void iMouse(int button, int stat, int mx, int my) {
 			multiplayer = 0;
 			countdown = 3;
 			state = Game;
-			PlaySound(0,0,0);
+			// PlaySound(0,0,0);
 			ButtonHighlighterpos = {-1,-1};
 			iResumeTimer(game_clock);
 		}
@@ -336,7 +333,6 @@ void iMouse(int button, int stat, int mx, int my) {
 void iKeyboard(unsigned char key) {
 	//Keuboard control while on the signle player gameplay
 	if(!multiplayer&&!paused && state == Game ){
-		if(key == 'f')if(reloadTime_p1<=0)fire(&player);
 		if(key == ' ')thrust(&player);
 		if(key == 27){  					// ecape button ASCII = 27 // game paused on pressing esc
 			paused = 1;
@@ -379,17 +375,15 @@ void iKeyboard(unsigned char key) {
 			if(multiplayer){
 				start(multiplayer_mode);
 				state = Game;
-				PlaySound(0,0,0);
 				ButtonHighlighterpos = {-1,-1};		// making the highlighter inactive
 				iResumeTimer(game_clock);
 				multiplayer = 1;		
 			}else{
 				start(Game);
 				state = Game;
-				PlaySound(0,0,0);
 				ButtonHighlighterpos = {-1,-1};
 				iResumeTimer(game_clock);
-				}
+			}
 		}
 		else if(editing == 0){			// when the first players name is being edited
 			if(key == '\b' && in1 > 0 )in1--;
@@ -439,7 +433,7 @@ void iSpecialKeyboard(unsigned char key) {
 
 int main() {
 	srand(time(0));
-	start(Game);
+	//start(Game);
 	Load_resources();
 	state = MainMenu;
 	PlaySound(TEXT("assets/Sound/bgm.wav"),NULL,SND_ASYNC | SND_LOOP);
@@ -758,6 +752,7 @@ void Draw_chooseScreen(){
 }
 // resetting with all the initial values before start
 void start(int mode){	
+	PlaySound(TEXT("assets/Sound/bgm2.wav"),NULL,SND_LOOP | SND_ASYNC);
 	if(mode == multiplayer_mode){		
 		player.position = player1_initital_pos;
 		player.velocity = {0,0};
@@ -793,7 +788,7 @@ void start(int mode){
 		High_score_Data = fopen("GameData/HighScore.bin","rb");
 		fread(&high_score,sizeof(int),1,High_score_Data);
 		fclose(High_score_Data);
-		saveTime = clock();
+		saveTime = currTime;
 	}
 
 	
@@ -841,11 +836,6 @@ void start(int mode){
 void update_gameplay(){
 	currTime = clock();
 		
-	if(playing_explosion && currTime-startTime_explosion>700){
-		playing_explosion = 0;   //while the explosion sound is playing it is ensoured that no other sound is played to interrupt (duration aproxx 0.7sec)
-	}
-
-
 	if(multiplayer){
 		if(player.life>0){
 			if(p1_thrust_toggle)thrust(&player);
@@ -1108,7 +1098,7 @@ void fire(object_properties *player){
 	}
 	if(player == &player2)reloadTime_p2 = player_rt;
 	else reloadTime_p1 = player_rt;
-	if(!playing_explosion)PlaySound(shoot_sound,NULL,SND_MEMORY | SND_ASYNC);
+	playsound("assets/Sound/fire.wav");
 }
 
 //Generates asteroids automatically on the edge of the game world when active asteroid count is less than max count
@@ -1291,7 +1281,7 @@ void enemy_attack(){	//fires a bullet toward the nearest player when called
 			enemy_bullets[j].velocity.y = bullet_velocity*sin(enemy_player_angle);
 			enemy_bullets[j].active = 1;
 			enemy_reload_time[i] = reload_time;
-			if(!playing_explosion)PlaySound(shoot_sound,NULL,SND_MEMORY|SND_ASYNC);
+			playsound("assets/Sound/fire.wav");
 			break;
 		}
 	}
@@ -1341,11 +1331,12 @@ void explode(vector2 pos,vector2 velocity,bool collision){
 	}
 		
 	if(!collision){	//playing explosion sound
-		PlaySound(0,0,0);
 		startTime_explosion = currTime;
-		playing_explosion = 1;
-		PlaySound(explode_sound,NULL, SND_MEMORY | SND_ASYNC );
+		playsound("assets/Sound/explode.wav");
 		shakeTime = 0;
+	}
+	else{
+		playsound("assets/Sound/exp2.wav");
 	}
 }
 
@@ -1393,20 +1384,6 @@ void Load_resources(){
 	iLoadImage(&choose_screen_single,"assets/Background/ChooseSpaceshipScreen.png");
 	iLoadImage(&aboutPage,"assets/Background/AboutPage.png");
 	
-	// Loading the sounds
-	// Sounds are loaded in the memory at the start of the game
-	HMMIO sound = mmioOpen("assets/Sound/fire.wav", NULL, MMIO_READ);
-	DWORD size = mmioSeek(sound, 0, SEEK_END);
-	mmioSeek(sound, 0, SEEK_SET);
-	shoot_sound = (char*)malloc(size);
-	mmioRead(sound, shoot_sound, size);
-
-	sound = mmioOpen("assets/Sound/explode.wav", NULL, MMIO_READ);
-	size = mmioSeek(sound, 0, SEEK_END);
-	mmioSeek(sound, 0, SEEK_SET);
-	explode_sound =(char*)malloc(size);
-	mmioRead(sound, explode_sound, size);
-	mmioClose(sound, 0);
 
 	//setting random postion of the stars
 	for(int i = 0; i<num_of_stars/2; i++){
@@ -1512,6 +1489,8 @@ void LoadGame(){
 	}
 	fclose(saved_data);
 
+	PlaySound(TEXT("assets/Sound/bgm2.wav"),NULL,SND_LOOP | SND_ASYNC);
+
 }
 int is_file_empty(FILE *file) {
     fseek(file, 0, SEEK_END); 
@@ -1587,6 +1566,19 @@ void player_collision(object_properties *player){
 		}
 	}
 }
+
+void playsound(char filename[])
+{
+	char command[256];
+	sprintf(command, "close sound%d", soundcount);
+    mciSendString(command, NULL, 0, NULL);
+    sprintf(command, "open \"%s\" type waveaudio alias sound%d",filename, soundcount);
+    mciSendString(command, NULL, 0, NULL);
+	sprintf(command, "play sound%d", soundcount);
+    mciSendString(command, NULL, 0, NULL);
+    soundcount = (soundcount+1)%max_sound;
+}
+
 
 
 

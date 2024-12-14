@@ -1583,4 +1583,3 @@ void playsound(char filename[])
 
 
 // Shahtaz Rahman Labib 
-// https://github.com/srlabib/Asteroids-Game

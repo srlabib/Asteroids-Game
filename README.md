@@ -8,3 +8,8 @@ This game is developed using iGraphics library using C and C++  language as a pr
 
    ```bash
    ./runner.bat iMain.cpp
+
+   
+# Gameplay
+
+https://github.com/user-attachments/assets/175e653e-fb74-48ce-8bda-bfae34c31f19
